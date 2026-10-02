@@ -114,6 +114,17 @@
 
   function laSoId(x) { return /^\d{1,20}$/.test(String(x)); }
 
+  // "1234" | "https://4015.instructure.com/courses/1234/…" → "1234"; khác Canvas của trường (khi biết base) → null
+  function parseCourseRef(text, base) {
+    var s = String(text == null ? '' : text).trim();
+    if (laSoId(s)) return s;
+    var u;
+    try { u = new URL(s); } catch (e) { return null; }
+    if (base) { try { if (new URL(base).host.toLowerCase() !== u.host.toLowerCase()) return null; } catch (e) { return null; } }
+    var m = /^\/courses\/(\d{1,20})(?:\/|$)/.exec(u.pathname);
+    return m ? m[1] : null;
+  }
+
   // Tên các tệp trong gói .zip (đọc thư mục trung tâm, không giải nén); không phải zip → null
   function tenTrongZip(u8) {
     if (!(u8 instanceof Uint8Array) || u8.length < 22) return null;
@@ -292,6 +303,51 @@
           if (theoId[id]) { if (theoId[id].roles.indexOf(vaiTro[i]) < 0) theoId[id].roles.push(vaiTro[i]); return; }
           theoId[id] = chuanKhoaHoc(c, vaiTro[i]);
           ds.push(theoId[id]);
+        });
+      }
+      ds.sort(function (a, b) { return a.name.localeCompare(b.name, 'vi'); });
+      return ds;
+    }
+
+    // Một khoá học theo mã (cần scope url:GET|/api/v1/courses/:id — chỉ bật khi CANVAS_QUAN_TRI=1).
+    // Không có scope / không đọc được → null (giao diện vẫn dùng mã, quyền nhập do checkPermissions quyết định)
+    async function getCourse(courseId) {
+      if (!laSoId(courseId)) throw CanvasError('Mã khoá học không hợp lệ.', 0, { code: 'tham_so' });
+      try {
+        var c = (await proxy('GET', '/api/v1/courses/' + courseId + '?include%5B%5D=term')).data;
+        return c && c.id != null ? chuanKhoaHoc(c, 'admin') : null;
+      } catch (e) {
+        if (e.status === 401) throw e;
+        return null;
+      }
+    }
+
+    // Quản trị: tìm khoá học trong các tài khoản (account) người dùng quản lý — tên, mã khoá hoặc mã số.
+    // Chỉ trang đầu (tối đa 50/tài khoản) để không quét cả trường; gõ cụ thể hơn nếu không thấy.
+    var taiKhoanQT = null;
+    async function searchCourses(term) {
+      var t = String(term == null ? '' : term).trim();
+      if (t.length < 2) throw CanvasError('Gõ ít nhất 2 ký tự để tìm khoá học.', 0, { code: 'tham_so' });
+      if (!taiKhoanQT) {
+        var acc = await layHet('/api/v1/accounts?per_page=100');
+        acc = Array.isArray(acc) ? acc.filter(function (a) { return a && laSoId(a.id); }) : [];
+        var ids = {};
+        acc.forEach(function (a) { ids[String(a.id)] = 1; });
+        // tài khoản con nằm trong tài khoản cha cũng được liệt kê → chỉ hỏi tài khoản "gốc" của danh sách
+        taiKhoanQT = acc.filter(function (a) { return !(a.parent_account_id != null && ids[String(a.parent_account_id)]); })
+          .map(function (a) { return String(a.id); });
+      }
+      if (!taiKhoanQT.length) throw CanvasError('Tài khoản này không có quyền quản trị (Admin) trên Canvas.', 403, { code: 'khong_quan_tri' });
+      var theoId = {}, ds = [];
+      for (var i = 0; i < taiKhoanQT.length; i++) {
+        // mã hoá cả ! ' ( ) * (encodeURIComponent để nguyên, proxy chỉ nhận ký tự an toàn)
+        var tk = encodeURIComponent(t).replace(/[!'()*]/g, function (ch) { return '%' + ch.charCodeAt(0).toString(16).toUpperCase(); });
+        var r = await proxy('GET', '/api/v1/accounts/' + taiKhoanQT[i] + '/courses?search_term=' + tk +
+          '&include%5B%5D=term&per_page=50&sort=course_name');
+        (Array.isArray(r.data) ? r.data : []).forEach(function (c) {
+          if (!c || c.id == null || theoId[String(c.id)]) return;
+          theoId[String(c.id)] = 1;
+          ds.push(chuanKhoaHoc(c, 'admin'));
         });
       }
       ds.sort(function (a, b) { return a.name.localeCompare(b.name, 'vi'); });
@@ -515,6 +571,7 @@
     return {
       getConfig: getConfig, loginUrl: loginUrl, logout: logout, me: me,
       listCourses: listCourses, listBanks: listBanks, checkPermissions: checkPermissions, importPackage: importPackage,
+      getCourse: getCourse, searchCourses: searchCourses,
       setPersonalToken: setPersonalToken, clearPersonalToken: clearPersonalToken, hasPersonalToken: hasPersonalToken,
       request: function (method, path, body) { return proxy(method, path, body); }
     };
@@ -522,7 +579,7 @@
 
   var macDinh = create();
   var api = {
-    create: create, parseLink: parseLink, toApiPath: toApiPath, isInstFs: isInstFs, mapState: mapState,
+    create: create, parseLink: parseLink, toApiPath: toApiPath, isInstFs: isInstFs, mapState: mapState, parseCourseRef: parseCourseRef,
     zipEntryNames: tenTrongZip, hasAssessment: hasAssessment,
     CanvasError: CanvasError, UPLOAD_PROXY_MAX: TAI_QUA_MAY_CHU
   };

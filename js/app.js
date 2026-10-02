@@ -1680,6 +1680,11 @@
       capNhatCanvas();
     });
     $('cv-khoa-hoc').addEventListener('change', chonKhoaHoc);
+    // khoá không ghi danh (quản trị): tìm trong toàn trường hoặc dán link
+    $('cv-tim').addEventListener('click', timKhoaHoc);
+    $('cv-tu-khoa').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); timKhoaHoc(); } });
+    $('cv-dung-link').addEventListener('click', dungLinkKhoaHoc);
+    $('cv-link-khoa').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); dungLinkKhoaHoc(); } });
     $('cv-chon-ngan-hang').addEventListener('change', function () {
       var e = mucTheoKey($('cv-chon-ngan-hang').value);
       $('cv-ten-ngan-hang').value = e ? e.bank.title : '';
@@ -1745,6 +1750,7 @@
     $('cv-dang-nhap').hidden = !cfg.oauth;
     $('cv-hop-token').hidden = !cfg.personalToken;
     $('cv-ly-do').textContent = !cfg.oauth && cfg.oauthReason ? cfg.oauthReason : '';
+    $('cv-tim-khoa').hidden = !cfg.adminSearch;
     if (user) {
       var ten = user.name || user.short_name || user.login_id || 'Đã đăng nhập';
       $('cv-ten').textContent = ten;
@@ -1782,11 +1788,11 @@
     sel.disabled = true;
     try {
       var ds = await cv.listCourses();
+      // giữ các khoá đã thêm bằng tìm kiếm / dán link (quản trị) khi tải lại danh sách
+      (S.cv.khoaThem || []).forEach(function (c) { if (!ds.some(function (x) { return x.id === c.id; })) ds.push(c); });
       S.cv.khoaHoc = ds;
-      rong(sel).appendChild(h('option', { value: '', text: ds.length ? '— Chọn khoá học —' : 'Không có khoá học nào bạn là giáo viên' }));
-      ds.forEach(function (c) {
-        sel.appendChild(h('option', { value: c.id, text: c.name + (c.code && c.code !== c.name ? ' (' + c.code + ')' : '') + (c.term ? ' · ' + c.term : '') }));
-      });
+      rong(sel).appendChild(h('option', { value: '', text: ds.length ? '— Chọn khoá học —' : 'Không có khoá học nào bạn là giáo viên — xem "Không thấy khoá học?" bên dưới' }));
+      ds.forEach(function (c) { sel.appendChild(h('option', { value: c.id, text: nhanKhoaHoc(c) })); });
       if (cu && ds.some(function (c) { return c.id === cu; })) sel.value = cu;
     } catch (e) {
       rong(sel).appendChild(h('option', { value: '', text: 'Không tải được khoá học' }));
@@ -1794,6 +1800,60 @@
       if (e && e.status === 401) { capNhatCanvas(); return; }
     } finally { sel.disabled = false; }
     if (sel.value) chonKhoaHoc();
+  }
+
+  function nhanKhoaHoc(c) {
+    return c.name + (c.code && c.code !== c.name ? ' (' + c.code + ')' : '') + (c.term ? ' · ' + c.term : '') +
+      (c.roles && c.roles[0] === 'admin' ? ' — quản trị' : '');
+  }
+
+  // Thêm một khoá (không ghi danh) vào danh sách chọn rồi chọn luôn
+  function themKhoaHoc(c) {
+    var sel = $('cv-khoa-hoc');
+    S.cv.khoaThem = S.cv.khoaThem || [];
+    if (!S.cv.khoaThem.some(function (x) { return x.id === c.id; })) S.cv.khoaThem.push(c);
+    var co = S.cv.khoaHoc.filter(function (x) { return x.id === c.id; })[0];
+    if (!co) { S.cv.khoaHoc.push(c); sel.appendChild(h('option', { value: c.id, text: nhanKhoaHoc(c) })); }
+    sel.value = c.id;
+    thongBao('Đã chọn khoá học: ' + (co || c).name, 'ok');
+    chonKhoaHoc();
+  }
+
+  async function dungLinkKhoaHoc() {
+    var cv = cvApi(), o = $('cv-link-khoa');
+    var id = cv.parseCourseRef(o.value, S.cv.cfg && S.cv.cfg.base);
+    if (!id) {
+      thongBao('Không đọc được khoá học — dán địa chỉ dạng ' + ((S.cv.cfg && S.cv.cfg.base) || 'https://…instructure.com') + '/courses/1234 hoặc gõ mã số.', 'loi');
+      o.focus();
+      return;
+    }
+    var c = null;
+    if (S.cv.cfg && S.cv.cfg.adminSearch) { try { c = await cv.getCourse(id); } catch (e) { c = null; } }
+    themKhoaHoc(c || { id: id, name: 'Khoá học #' + id, code: '', term: '', state: '', roles: ['admin'] });
+    o.value = '';
+  }
+
+  async function timKhoaHoc() {
+    var cv = cvApi(), t = $('cv-tu-khoa').value.trim(), kq = rong($('cv-kq-tim')), nut = $('cv-tim');
+    if (t.length < 2) { kq.appendChild(h('p', { class: 'hint', text: 'Gõ ít nhất 2 ký tự.' })); return; }
+    nut.disabled = true;
+    kq.appendChild(h('p', { class: 'muted nho' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), ' Đang tìm…'));
+    try {
+      var ds = await cv.searchCourses(t);
+      rong(kq);
+      if (!ds.length) { kq.appendChild(h('p', { class: 'hint', text: 'Không thấy khoá nào khớp "' + t + '".' })); return; }
+      var ul = h('ul', { class: 'cv-kq-ds' });
+      ds.forEach(function (c) {
+        var b = h('button', { type: 'button' }, h('span', { text: c.name }),
+          h('small', { text: [c.code && c.code !== c.name ? c.code : '', c.term, 'mã ' + c.id].filter(Boolean).join(' · ') }));
+        b.addEventListener('click', function () { themKhoaHoc(c); rong(kq); $('cv-tu-khoa').value = ''; });
+        ul.appendChild(h('li', null, b));
+      });
+      kq.appendChild(ul);
+      if (ds.length >= 50) kq.appendChild(h('p', { class: 'hint', text: 'Chỉ hiện 50 khoá đầu — gõ cụ thể hơn để thu hẹp.' }));
+    } catch (e) {
+      rong(kq).appendChild(h('div', { class: 'notice n-loi' }, icon('loi'), h('div', { text: e && e.message || 'Không tìm được khoá học.' })));
+    } finally { nut.disabled = false; }
   }
 
   async function chonKhoaHoc() {

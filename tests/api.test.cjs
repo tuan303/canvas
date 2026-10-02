@@ -477,7 +477,7 @@ test('tích hợp đầy đủ với Canvas giả lập', async () => {
     // --- config ---
     r = await raw(base, 'GET', '/api/canvas?op=config');
     assert.strictEqual(r.status, 200);
-    assert.deepStrictEqual(r.json, { enabled: true, base: M.base, oauth: true, personalToken: true, loggedIn: false, user: null });
+    assert.deepStrictEqual(r.json, { enabled: true, base: M.base, oauth: true, personalToken: true, adminSearch: false, loggedIn: false, user: null });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
     assert.ok(!r.headers['access-control-allow-origin'], 'không mở CORS');
 
@@ -772,6 +772,27 @@ test('tích hợp đầy đủ với Canvas giả lập', async () => {
     Object.assign(process.env, envCu);
     await dong(sv); await dong(svCanvas);
   }
+});
+
+test('Quản trị: CANVAS_QUAN_TRI bật thêm 3 scope + 3 đường dẫn tìm khoá học; mặc định tắt; dán link khoá học', async () => {
+  const goc = { CANVAS_BASE_URL: 'https://4015.instructure.com', CANVAS_CLIENT_ID: '268250000000000001', CANVAS_CLIENT_SECRET: 'x'.repeat(40), SESSION_SECRET: 's'.repeat(40) };
+  const tat = I.readConfig(goc), bat = I.readConfig(Object.assign({ CANVAS_QUAN_TRI: '1' }, goc));
+  assert.deepStrictEqual(tat.scopes, I.SCOPES, 'mặc định chỉ 10 scope — đăng nhập giáo viên không đổi');
+  assert.deepStrictEqual(bat.scopes, I.SCOPES.concat(I.SCOPES_QUAN_TRI));
+  const ok = (ch, p, m) => !I.checkProxyPath(p, m || 'GET', ch).loi;
+  for (const p of ['/api/v1/accounts?per_page=100', '/api/v1/accounts/1/courses?search_term=TO%C3%81N%20%282%29&include%5B%5D=term&per_page=50&sort=course_name', '/api/v1/courses/123?include%5B%5D=term']) {
+    assert.ok(ok(bat, p), 'bật: ' + p);
+    assert.ok(!ok(tat, p), 'tắt: ' + p);
+  }
+  assert.ok(!ok(bat, '/api/v1/accounts/1/courses', 'POST'));
+  assert.ok(!ok(bat, '/api/v1/accounts/1/users'));
+  assert.ok(!ok(bat, '/api/v1/accounts/1/courses?search_term=a(b)'), 'ngoặc chưa mã hoá bị chặn → client phải mã hoá');
+  assert.ok(!ok(bat, '/api/v1/accounts/1/courses?as_user_id=5'));
+  assert.strictEqual(capi.parseCourseRef('https://4015.instructure.com/courses/1234/quizzes', 'https://4015.instructure.com'), '1234');
+  assert.strictEqual(capi.parseCourseRef(' 987 '), '987');
+  assert.strictEqual(capi.parseCourseRef('https://khac.instructure.com/courses/1', 'https://4015.instructure.com'), null);
+  assert.strictEqual(capi.parseCourseRef('https://4015.instructure.com/accounts/1'), null);
+  assert.strictEqual(capi.parseCourseRef('abc'), null);
 });
 
 test('Vercel: dùng req.body đã đọc sẵn (Buffer/đối tượng JSON)', async () => {

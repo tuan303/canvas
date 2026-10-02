@@ -38,6 +38,13 @@ const SCOPES = [
   'url:GET|/api/v1/courses/:course_id/content_migrations/:content_migration_id/migration_issues',
   'url:GET|/api/v1/progress/:id'
 ];
+// Chỉ khi CANVAS_QUAN_TRI=1: tìm khoá học trong toàn trường cho tài khoản quản trị (không ghi danh vào khoá).
+// Bật biến này TRƯỚC khi tích 3 scope trên Developer Key sẽ làm hỏng đăng nhập (Canvas báo invalid_scope).
+const SCOPES_QUAN_TRI = [
+  'url:GET|/api/v1/accounts',
+  'url:GET|/api/v1/accounts/:account_id/courses',
+  'url:GET|/api/v1/courses/:id'
+];
 
 // Allowlist proxy: [phương thức được phép, biểu thức đường dẫn (không gồm query)] — khớp SCOPES ở trên
 const CHO_PHEP = [
@@ -50,6 +57,11 @@ const CHO_PHEP = [
   [['GET'], /^\/api\/v1\/courses\/\d{1,20}\/content_migrations\/\d{1,20}\/migration_issues(\/\d{1,20})?$/],
   [['GET'], /^\/api\/v1\/question_banks$/],
   [['GET'], /^\/api\/v1\/progress\/\d{1,20}$/]
+];
+const CHO_PHEP_QUAN_TRI = [
+  [['GET'], /^\/api\/v1\/accounts$/],
+  [['GET'], /^\/api\/v1\/accounts\/\d{1,20}\/courses$/],
+  [['GET'], /^\/api\/v1\/courses\/\d{1,20}$/]
 ];
 const RE_QUERY = /^[A-Za-z0-9_\-.~%=&+:,\[\]]*$/;
 // Tham số Canvas đọc từ query/thân JSON làm đổi danh tính hay phương thức: as_user_id (giả danh — quản trị),
@@ -105,8 +117,9 @@ function docCauHinh(env) {
   ch.oauth = !ch.loiOauth;
   ch.personal = /^(1|true|yes|on)$/i.test(String(env.ALLOW_PERSONAL_TOKEN || '').trim());
   ch.pkce = true;
+  ch.quanTri = /^(1|true|yes|on)$/i.test(String(env.CANVAS_QUAN_TRI || '').trim());
   const sc = String(env.CANVAS_SCOPES || '').trim();
-  ch.scopes = sc.toLowerCase() === 'none' ? [] : (sc ? sc.split(/\s+/) : SCOPES.slice());
+  ch.scopes = sc.toLowerCase() === 'none' ? [] : (sc ? sc.split(/\s+/) : SCOPES.concat(ch.quanTri ? SCOPES_QUAN_TRI : []));
   if (!ch.oauth && !ch.personal) ch.loi = ch.loiOauth || 'Chưa bật cách đăng nhập nào.';
   return ch;
 }
@@ -271,7 +284,7 @@ function pkceChallenge(verifier) { return b64url(crypto.createHash('sha256').upd
 /* ===================== Kiểm tra đường dẫn / địa chỉ tải ===================== */
 
 // → { pathname, query } hoặc { loi, status }
-function checkProxyPath(p, method) {
+function checkProxyPath(p, method, ch) {
   if (typeof p !== 'string' || !p) return { status: 400, loi: 'Thiếu tham số path.' };
   if (p.length > 2048) return { status: 400, loi: 'Đường dẫn quá dài.' };
   if (p.slice(0, 8) !== '/api/v1/') return { status: 403, loi: 'Chỉ cho phép đường dẫn /api/v1/… của Canvas.' };
@@ -284,7 +297,7 @@ function checkProxyPath(p, method) {
   if (query && query.split('&').some(function (t) { return laKhoaCam(t.split('=')[0]); })) {
     return { status: 403, loi: 'Tham số truy vấn không được phép (giả danh / token / đổi phương thức).' };
   }
-  const muc = CHO_PHEP.filter(function (m) { return m[1].test(pathname); });
+  const muc = (ch && ch.quanTri ? CHO_PHEP.concat(CHO_PHEP_QUAN_TRI) : CHO_PHEP).filter(function (m) { return m[1].test(pathname); });
   if (!muc.length) return { status: 403, loi: 'Đường dẫn không nằm trong danh sách được phép: ' + pathname };
   if (!muc.some(function (m) { return m[0].indexOf(method) >= 0; })) return { status: 405, loi: 'Phương thức ' + method + ' không được phép cho ' + pathname };
   return { pathname: pathname, query: query };
@@ -453,7 +466,7 @@ function canTieuDeClient(ctx) {
 
 function opConfig(ctx) {
   const ch = ctx.ch;
-  const kq = { enabled: !!ch.base && (ch.oauth || ch.personal), base: ch.base, oauth: ch.oauth, personalToken: ch.personal, loggedIn: false, user: null };
+  const kq = { enabled: !!ch.base && (ch.oauth || ch.personal), base: ch.base, oauth: ch.oauth, personalToken: ch.personal, adminSearch: !!(ch.base && ch.quanTri), loggedIn: false, user: null };
   if (ch.oauth) {
     const p = decryptSession(docCookieTen(ctx, COOKIE_PHIEN), ch.secret);
     if (p) { kq.loggedIn = true; kq.user = p.user || null; }
@@ -575,7 +588,7 @@ async function opProxy(ctx, u, duongDanCoDinh) {
   canTieuDeClient(ctx);
   const method = String(ctx.req.method || 'GET').toUpperCase();
   if (['GET', 'POST', 'PUT'].indexOf(method) < 0) throw loiHttp(405, 'Phương thức không được phép.');
-  const kt = checkProxyPath(duongDanCoDinh || u.searchParams.get('path'), method);
+  const kt = checkProxyPath(duongDanCoDinh || u.searchParams.get('path'), method, ctx.ch);
   if (kt.loi) throw loiHttp(kt.status, kt.loi, 'khong_cho_phep');
   canDangNhap(ctx);
   const url = new URL(kt.pathname + (kt.query ? '?' + kt.query : ''), ch.base);
@@ -707,6 +720,6 @@ module.exports._internal = {
   encryptSession: encryptSession, decryptSession: decryptSession, checkProxyPath: checkProxyPath,
   isAllowedUploadUrl: isAllowedUploadUrl, readConfig: docCauHinh, parseCookies: docCookie,
   pkceVerifier: pkceVerifier, pkceChallenge: pkceChallenge, isForbiddenParam: laKhoaCam,
-  SCOPES: SCOPES, scopeThieu: scopeThieu, COOKIE_SESSION: COOKIE_PHIEN, COOKIE_STATE: COOKIE_STATE, COOKIE_HOST_PREFIX: TIEN_TO_HOST,
+  SCOPES: SCOPES, SCOPES_QUAN_TRI: SCOPES_QUAN_TRI, scopeThieu: scopeThieu, COOKIE_SESSION: COOKIE_PHIEN, COOKIE_STATE: COOKIE_STATE, COOKIE_HOST_PREFIX: TIEN_TO_HOST,
   UPLOAD_MAX: GIOI_HAN_TAI
 };

@@ -272,6 +272,26 @@
               <label for="cv-khoa-hoc">Khoá học</label>
               <select id="cv-khoa-hoc" class="select"><option value="">— Chọn khoá học —</option></select>
             </div>
+            <details class="fold" id="cv-them-khoa" style="margin-top:10px">
+              <summary>Không thấy khoá học? (quản trị / khoá chưa ghi danh)</summary>
+              <div class="fold-body">
+                <p class="hint" style="margin-top:8px">Danh sách trên chỉ gồm khoá thầy cô được <b>ghi danh</b> là giáo viên, trợ giảng hoặc thiết kế. Khoá vào bằng quyền quản trị thì tìm hoặc dán link ở đây.</p>
+                <div id="cv-tim-khoa" hidden>
+                  <div class="field">
+                    <label for="cv-tu-khoa">Tìm trong toàn trường</label>
+                    <div class="cv-dong"><input id="cv-tu-khoa" class="input" type="search" maxlength="100" autocomplete="off" placeholder="Tên, mã khoá học hoặc mã số">
+                      <button type="button" class="btn btn-outline" id="cv-tim">Tìm</button></div>
+                  </div>
+                  <div id="cv-kq-tim" style="margin-top:8px"></div>
+                </div>
+                <div class="field" style="margin-top:10px">
+                  <label for="cv-link-khoa">Dán link khoá học</label>
+                  <div class="cv-dong"><input id="cv-link-khoa" class="input" type="url" autocomplete="off" spellcheck="false" placeholder="https://4015.instructure.com/courses/1234">
+                    <button type="button" class="btn btn-outline" id="cv-dung-link">Dùng khoá này</button></div>
+                  <p class="hint" style="margin-top:6px">Mở khoá học trên Canvas, chép địa chỉ trên thanh trình duyệt rồi dán vào đây (hoặc chỉ gõ mã số).</p>
+                </div>
+              </div>
+            </details>
             <div id="cv-quyen" style="margin-top:10px"></div>
             <div id="cv-ngan-hang-cu" style="margin-top:12px"></div>
           </div>
@@ -330,6 +350,7 @@
     <span>Trường TH, THCS &amp; THPT Ngôi Sao Hoàng Mai — Ngân hàng câu hỏi Canvas</span>
     <span><a href="huong-dan.html" target="_blank" rel="noopener">Hướng dẫn sử dụng</a> · Gói QTI 1.2 cho Canvas LMS</span>
   </div>
+  <p class="foot-credit">© Design &amp; Development by Tuan™</p>
 </footer>
 
 <noscript><div class="wrap"><p class="notice n-loi">Trang cần JavaScript để chạy. Hãy bật JavaScript trong trình duyệt.</p></div></noscript>

@@ -213,6 +213,7 @@ tác giả/đường dẫn máy trong file. Không bao giờ chép đề thật 
 | `ALLOW_PERSONAL_TOKEN` | Không | `1` = cho dán token cá nhân (chỉ chạy thử một giáo viên) |
 | `APP_URL` | **Nên đặt** | Địa chỉ công khai của web (`https://…`, không `?`/`#`) — dựng `redirect_uri`; phải khớp Redirect URI của Developer Key |
 | `CANVAS_SCOPES` | Không | Ghi đè danh sách scope; `none` = không gửi scope (Developer Key không bật Enforce Scopes) |
+| `CANVAS_QUAN_TRI` | Không | `1` = bật ô **"Tìm trong toàn trường"** cho tài khoản quản trị (khoá không ghi danh). Xin thêm 3 scope: `url:GET\|/api/v1/accounts`, `url:GET\|/api/v1/accounts/:account_id/courses`, `url:GET\|/api/v1/courses/:id` — **tích 3 scope này trên Developer Key TRƯỚC** rồi mới đặt biến, nếu không mọi người không đăng nhập được (Canvas báo thiếu scope). Không bật vẫn dán được link khoá học. |
 | `PORT`, `HOST` | Không | Chỉ cho `server.js` (mặc định 8787, 127.0.0.1; `server.js` chỉ nhận Host `localhost`/`127.x`/`[::1]`) |
 
 Redirect URI cần khai báo trong Developer Key: `https://<địa chỉ web>/api/canvas?op=callback`

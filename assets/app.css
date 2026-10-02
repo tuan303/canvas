@@ -368,6 +368,14 @@ ol.steps-list > li::before { content: counter(b); position: absolute; left: 0; t
 
 /* ---------- bước 4: Canvas ---------- */
 .cv-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 22px; }
+.cv-dong { display: flex; gap: 8px; align-items: stretch; }
+.cv-dong .input { flex: 1; min-width: 0; }
+.cv-dong .btn { flex: none; }
+.cv-kq-ds { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); max-height: 260px; overflow: auto; background: #fff; }
+.cv-kq-ds li + li { border-top: 1px solid var(--line-2); }
+.cv-kq-ds button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 12px; font: inherit; color: inherit; cursor: pointer; }
+.cv-kq-ds button:hover, .cv-kq-ds button:focus-visible { background: var(--navy-50); }
+.cv-kq-ds small { display: block; color: var(--muted); font-size: .8rem; }
 .cv-user { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 12px; background: var(--green-50); border: 1px solid var(--green-100); margin-bottom: 14px; flex-wrap: wrap; }
 .cv-user .avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-weight: 700; }
 .cv-banks { list-style: none; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 10px; max-height: 240px; overflow: auto; }
@@ -398,6 +406,7 @@ ol.steps-list > li::before { content: counter(b); position: absolute; left: 0; t
 
 footer.site-foot { border-top: 1px solid var(--line); background: #fff; padding: 22px 0; color: var(--ink-3); font-size: .86rem; }
 footer.site-foot .wrap { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; }
+footer.site-foot .foot-credit { margin: 18px 0 -22px; padding: 10px 16px; background: var(--navy); color: #fff; text-align: center; font-weight: 700; font-size: .84rem; letter-spacing: .2px; }
 
 /* ---------- đáp ứng: iPad / điện thoại ---------- */
 @media (max-width: 1000px) {

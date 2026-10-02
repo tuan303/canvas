@@ -369,7 +369,11 @@ Theo `docs/nghien-cuu/rest-api.md`.
   question_banks, progress), `upload` (dự phòng khi upload_url không phải inst-fs, ≤ 4 MB).
   Biến môi trường: `CANVAS_BASE_URL`, `CANVAS_CLIENT_ID`, `CANVAS_CLIENT_SECRET`, `SESSION_SECRET`,
   `ALLOW_PERSONAL_TOKEN` (=1 cho chạy thử bằng token cá nhân gửi qua header `X-Canvas-Token`), `APP_URL` (**nên đặt**
-  trên Vercel: Canvas so Redirect URI nguyên văn, tên miền preview sẽ bị từ chối), `CANVAS_SCOPES`.
+  trên Vercel: Canvas so Redirect URI nguyên văn, tên miền preview sẽ bị từ chối), `CANVAS_SCOPES`,
+  `CANVAS_QUAN_TRI` (=1: thêm 3 scope + 3 đường dẫn `GET accounts`, `GET accounts/:id/courses`, `GET courses/:id` để
+  tài khoản quản trị tìm khoá không ghi danh; `config` trả `adminSearch`). Khoá không ghi danh còn chọn được bằng
+  **dán link khoá học** (`canvasApi.parseCourseRef`) — không cần scope mới, quyền nhập do `checkPermissions` quyết định.
+  Lỗi đăng nhập `invalid_scope` → `?canvas=loi&ma=thieu_scope&thieu=<scope của mình bị thiếu>` để giao diện nêu rõ.
   Lỗi cấu hình trả 4xx (không 5xx). Không ghi log token.
 - **Phạm vi (scope)**: xin đúng **10** scope (`SCOPES` trong `api/canvas.js`): `GET users/:id`, `GET courses`,
   `GET courses/:course_id/permissions`, `GET question_banks`, `GET …/content_migrations/migrators`,
