@@ -375,7 +375,7 @@ test('index.html: thứ tự script đúng DESIGN §0, mọi file tồn tại, s
   assert.deepStrictEqual(ds2, ['core', 'zip', 'html', 'math', 'omml', 'latex', 'docx', 'xlsx', 'scorm', 'qti', 'canvas-api', 'app'].map(n => 'js/' + n + '.js'));
   ds2.forEach(p => assert.ok(fs.existsSync(path.join(GOC, p)), p));
   assert.ok(fs.existsSync(path.join(GOC, 'assets/app.css')));
-  assert.ok(fs.existsSync(path.join(GOC, 'assets/icon.svg')));
+  assert.ok(fs.existsSync(path.join(GOC, 'assets/logo.svg')), 'logo trường');
   assert.ok(/<html lang="vi">/.test(html));
   assert.ok(/name="viewport"/.test(html));
   assert.ok(/Be\+Vietnam\+Pro/.test(html));

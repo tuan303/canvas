@@ -100,7 +100,7 @@ của giáo viên — đề thi không gửi đi đâu (trừ khi bấm "Gửi t
 ## Cấu trúc thư mục
 ```
 index.html            giao diện (4 bước)                     huong-dan.html   hướng dẫn cho giáo viên
-assets/               app.css (dùng chung 2 trang), icon.svg
+assets/               app.css (dùng chung 2 trang), logo.svg (logo trường, lấy từ hoangmaistarschool.edu.vn)
 js/core.js            XML, thoát ký tự, chuỗi tiếng Việt, mô hình câu hỏi, validateQuestion, CRC32
 js/zip.js             đọc/ghi zip (CompressionStream trên trình duyệt, zlib trên Node)
 js/html.js            làm sạch HTML theo allowlist Canvas, HTML → chữ thuần
