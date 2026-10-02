@@ -6,6 +6,8 @@
 <title>Ngân hàng câu hỏi Canvas — NSHM</title>
 <meta name="description" content="Chuyển đề Word, Excel theo mẫu và gói SCORM thành gói QTI để nhập vào Ngân hàng câu hỏi Canvas. Trường TH, THCS &amp; THPT Ngôi Sao Hoàng Mai.">
 <meta name="theme-color" content="#23328C">
+<!-- Chặn plugin và thẻ <base> lạ (lớp bảo vệ thêm; không giới hạn script để bộ đọc SCORM trong iframe srcdoc vẫn chạy, kể cả file://) -->
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'none'">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -45,7 +47,7 @@
         <span class="step-no" aria-hidden="true">1</span>
         <div>
           <h2 id="h-nap">Nạp đề</h2>
-          <p>File Word hoặc Excel soạn theo mẫu của trường, hoặc gói SCORM tạo bằng bộ tạo đề. Có thể nạp nhiều file một lúc — mỗi ngân hàng câu hỏi sẽ thành một thẻ ở bước 2.</p>
+          <p>File Word hoặc Excel soạn theo mẫu của trường, đề Word đánh số câu thông thường, hoặc gói SCORM tạo bằng bộ tạo đề. Có thể nạp nhiều file một lúc — mỗi ngân hàng câu hỏi sẽ thành một thẻ ở bước 2. Đề chưa có đáp án: nạp kèm <b>file đáp án / hướng dẫn chấm</b> (tên có HDC, KEY, Đáp án…) để tự điền.</p>
         </div>
       </div>
 
@@ -65,6 +67,7 @@
             <li><span class="kind-dot k-xlsx" aria-hidden="true"></span>Excel .xlsx</li>
             <li><span class="kind-dot k-scorm" aria-hidden="true"></span>Gói SCORM .zip</li>
             <li><span class="kind-dot k-img" aria-hidden="true"></span>Ảnh / .zip ảnh kèm Excel</li>
+            <li><span class="kind-dot k-key" aria-hidden="true"></span>File đáp án .docx (HDC, KEY)</li>
           </ul>
         </div>
 
@@ -154,7 +157,7 @@
               </label>
               <label class="opt"><input type="radio" name="target" value="classic">
                 <span class="opt-t">Question Bank – Classic Quizzes</span>
-                <span class="opt-d">Một file .zip chứa mọi ngân hàng, nhập qua <b>Cài Đặt → Nhập Nội Dung Khóa Học</b>. Nhập lại để cập nhật được (Ghi đè). Gửi thẳng qua API cũng dùng kiểu này.</span>
+                <span class="opt-d">Một file .zip chứa mọi ngân hàng, nhập qua <b>Cài Đặt → Nhập Nội Dung Khóa Học</b>. Nhập lại để cập nhật được (Ghi đè). Gửi thẳng vào Question Bank (bước 4) cũng dùng kiểu này.</span>
               </label>
             </div>
           </fieldset>
@@ -233,7 +236,8 @@
         <span class="step-no" aria-hidden="true">4</span>
         <div>
           <h2 id="h-canvas">Gửi thẳng lên Canvas</h2>
-          <p>Đưa ngân hàng vào <b>Question Bank (Classic Quizzes)</b> của khoá học mà không cần tải file. <b>Item Bank của New Quizzes không có API</b> — với Item Bank, hãy dùng nút <b>Tải gói QTI</b> ở bước 3 rồi nhập tay.</p>
+          <p>Đưa ngân hàng lên khoá học mà không cần tải file: vào <b>Question Bank (Classic)</b>, hoặc để Canvas <b>chuyển thành một New Quiz</b> khi nhập. <b>Item Bank của New Quizzes không có API</b> — muốn chắc chắn có Item Bank, hãy dùng nút <b>Tải gói QTI</b> ở bước 3 rồi nhập tay.</p>
+          <p class="cv-host" id="cv-truong" hidden></p>
         </div>
       </div>
 
@@ -279,12 +283,26 @@
             <div class="field" style="margin-top:12px">
               <label for="cv-ten-ngan-hang">Tên ngân hàng trên Canvas</label>
               <input id="cv-ten-ngan-hang" class="input" type="text" maxlength="255" autocomplete="off">
-              <span class="hint">Đổi tên ở đây cũng đổi tên ở bước 2.</span>
+              <span class="hint">Đổi tên ở đây cũng đổi tên ở bước 2. Với New Quizzes, đây cũng là tên bài kiểm tra.</span>
             </div>
-            <label class="check-line" style="margin-top:12px"><input type="checkbox" id="cv-ghi-de" checked>
+            <fieldset class="opt-group" id="cv-nhom-dich" style="margin-top:14px">
+              <legend class="field-label">Đưa vào đâu?</legend>
+              <div class="opt-cards">
+                <label class="opt"><input type="radio" name="cv-dich" value="classic">
+                  <span class="opt-t">Question Bank – Classic</span>
+                  <span class="opt-d">Tạo hoặc cập nhật <b>Ngân Hàng Câu Hỏi (Bản cũ)</b> của khoá học. Sửa đề rồi gửi lại sẽ ghi đè đúng câu cũ.</span>
+                </label>
+                <label class="opt"><input type="radio" name="cv-dich" value="newquiz">
+                  <span class="opt-t">Chuyển sang New Quizzes khi nhập</span>
+                  <span class="opt-d">Canvas tạo một <b>New Quiz</b> chứa mọi câu (tên bài = tên ngân hàng), như ô “Chuyển đổi nội dung thành Các Câu Hỏi Kiểm Tra Mới” khi nhập tay. Nếu Canvas của trường bật chuyển ngân hàng sang New Quizzes, có thể có thêm Item Bank cùng tên <span class="tag-thu">cần thử lần đầu</span></span>
+                </label>
+              </div>
+            </fieldset>
+            <label class="check-line" id="cv-hop-ghi-de" style="margin-top:12px"><input type="checkbox" id="cv-ghi-de" checked>
               <span><b>Ghi đè nếu đã gửi trước đó</b><br><span class="hint">Câu cùng mã được cập nhật thay vì tạo ngân hàng trùng lặp.</span></span></label>
+            <p class="hint" id="cv-ghi-chu-nq" hidden style="margin-top:12px">Mỗi lần gửi tạo một New Quiz <b>mới</b> (New Quizzes không ghi đè bài cũ). Khoá học phải bật New Quizzes; nếu chưa bật, Canvas giữ bài kiểm tra Classic.</p>
             <div class="xuat-actions">
-              <button type="button" class="btn btn-red" id="cv-gui" disabled>Gửi lên Canvas</button>
+              <button type="button" class="btn btn-red" id="cv-gui" disabled>Gửi vào Question Bank</button>
               <button type="button" class="btn btn-outline" id="cv-huy" hidden>Huỷ</button>
             </div>
           </div>

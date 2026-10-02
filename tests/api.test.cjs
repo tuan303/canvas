@@ -13,6 +13,7 @@ const GOC = path.resolve(__dirname, '..');
 const handler = require('../api/canvas.js');
 const may = require('../server.js');
 const capi = require('../js/canvas-api.js');
+const qti = require('../js/qti.js');
 const I = handler._internal;
 
 const BI_MAT = 'bi-mat-thu-nghiem-dai-hon-32-ky-tu!!';
@@ -298,10 +299,10 @@ test('allowlist proxy: chỉ các đường dẫn Canvas cần thiết', () => {
   ok('/api/v1/courses/12/content_migrations', 'POST');
   ok('/api/v1/courses/12/content_migrations');
   ok('/api/v1/courses/12/content_migrations/456');
-  ok('/api/v1/courses/12/content_migrations/456', 'PUT');
+  cam('/api/v1/courses/12/content_migrations/456', 'PUT', 405);   // không dùng → không mở
   ok('/api/v1/courses/12/content_migrations/456/migration_issues?per_page=100');
   ok('/api/v1/question_banks?context_type=Course&context_id=12&include_question_count=true');
-  ok('/api/v1/question_banks/7/questions');
+  cam('/api/v1/question_banks/7/questions', 'GET', 403);   // nội dung câu hỏi: công cụ không cần đọc
   ok('/api/v1/progress/789');
   cam('/api/v1/accounts/1/users', 'GET', 403);
   cam('/api/v1/accounts/1/content_migrations', 'POST', 403);
@@ -337,7 +338,8 @@ test('địa chỉ tải lên: chỉ máy Canvas / inst-fs / S3', () => {
   co('https://inst-fs-sin-prod.inscloudgate.net/files?token=abc');
   co('https://instructure-uploads-apse1.s3.ap-southeast-1.amazonaws.com/');
   co('https://nshm.instructure.com/files_api');
-  co('https://other.instructure.com/x');
+  khong('https://other.instructure.com/x');   // Canvas trường khác
+  khong('https://abc.execute-api.ap-southeast-1.amazonaws.com/x');
   khong('http://inst-fs-sin-prod.inscloudgate.net/files');
   khong('https://inscloudgate.net/files');
   khong('https://evil-inscloudgate.net/files');
@@ -366,7 +368,8 @@ test('đọc cấu hình: thiếu/sai biến → lỗi tiếng Việt, scopes', 
   ch = I.readConfig({ CANVAS_BASE_URL: 'https://a.instructure.com/login/canvas', CANVAS_CLIENT_ID: '1', CANVAS_CLIENT_SECRET: '2', SESSION_SECRET: BI_MAT, ALLOW_PERSONAL_TOKEN: '1' });
   assert.strictEqual(ch.base, 'https://a.instructure.com'); assert.strictEqual(ch.oauth, true); assert.strictEqual(ch.personal, true);
   assert.deepStrictEqual(ch.scopes, I.SCOPES);
-  assert.strictEqual(I.SCOPES.length, 13);
+  assert.strictEqual(I.SCOPES.length, 10);
+  assert.ok(!I.SCOPES.some(s => /^url:PUT/.test(s)), 'không xin PUT');
   assert.ok(I.SCOPES.includes('url:POST|/api/v1/courses/:course_id/content_migrations'));
   assert.deepStrictEqual(I.readConfig({ CANVAS_BASE_URL: 'https://a.instructure.com', CANVAS_SCOPES: 'none', ALLOW_PERSONAL_TOKEN: '1' }).scopes, []);
 });
@@ -496,7 +499,9 @@ test('tích hợp đầy đủ với Canvas giả lập', async () => {
     assert.ok(/HttpOnly/.test(ck.raw) && /SameSite=Lax/.test(ck.raw) && /Path=\//.test(ck.raw) && !/Secure/.test(ck.raw), ck.raw);
     // sau proxy https → cookie Secure
     r = await raw(base, 'GET', '/api/canvas?op=login', { 'x-forwarded-proto': 'https' });
-    assert.ok(/; Secure/.test(layCookie(r.headers, I.COOKIE_STATE).raw));
+    // https → cookie __Host- (Secure, Path=/, không Domain); tên trần không được đặt
+    assert.ok(/^__Host-nh_canvas_st=[0-9a-f]{36}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=600; Secure$/.test(layCookie(r.headers, I.COOKIE_HOST_PREFIX + I.COOKIE_STATE).raw));
+    assert.ok(!layCookie(r.headers, I.COOKIE_STATE));
     assert.ok(new URL(r.headers.location).searchParams.get('redirect_uri').startsWith('https://127.0.0.1:'));
 
     // --- callback: state sai / bị từ chối / đúng ---
@@ -638,6 +643,29 @@ test('tích hợp đầy đủ với Canvas giả lập', async () => {
     const xongA = sau.findIndex(x => x.path === '/api/v1/courses/2/content_migrations/' + ka.migrationId + '/migration_issues');
     assert.ok(taoB > xongA && xongA >= 0, 'lần 2 chỉ tạo sau khi lần 1 xong');
 
+    // --- chuyển sang New Quizzes khi nhập: import_quizzes_next = true (boolean JSON), gói Item Bank có bài kiểm tra ---
+    const nhNQ = { title: 'Toán 12 – NQ', questions: [{ id: 'q01', no: '1', type: 'essay', points: 1, stem: '<p>Viết</p>' }], images: {} };
+    const goiIB = (await qti.buildPackages([nhNQ], { target: 'itembank' }))[0];
+    const goiCL = (await qti.buildPackages([nhNQ], { target: 'classic' }))[0];
+    assert.ok(capi.hasAssessment(goiIB.bytes) && !capi.hasAssessment(goiCL.bytes) && !capi.hasAssessment(bytes));
+    const soTao = M.creates.length;
+    const tienNQ = [];
+    const kqNQ = await c.importPackage('1', { bytes: goiIB.bytes, fileName: goiIB.fileName, bankName: 'không gửi', importQuizzesNext: true, onProgress: e => tienNQ.push(e) });
+    assert.strictEqual(kqNQ.ok, true); assert.strictEqual(kqNQ.importQuizzesNext, true);
+    const taoNQ = M.creates[soTao];
+    assert.deepStrictEqual(taoNQ.body.settings, { import_quizzes_next: true }, 'chỉ import_quizzes_next (boolean thật), không ngân hàng mặc định, không ghi đè');
+    assert.strictEqual(taoNQ.body.migration_type, 'qti_converter');
+    assert.ok(tienNQ.some(e => e.stage === 'running' && /New Quizzes/.test(e.message)));
+    // xin ghi đè rõ ràng thì mới gửi
+    await c.importPackage('1', { bytes: goiIB.bytes, fileName: goiIB.fileName, importQuizzesNext: true, overwrite: true });
+    assert.deepStrictEqual(M.creates[soTao + 1].body.settings, { import_quizzes_next: true, overwrite_quizzes: true });
+    // gói chỉ có ngân hàng (objectbank) → từ chối trước khi tạo lần nhập trên Canvas
+    await assert.rejects(c.importPackage('1', { bytes: goiCL.bytes, fileName: goiCL.fileName, importQuizzesNext: true }), e => e.code === 'goi_sai' && /bài kiểm tra/.test(e.message));
+    assert.strictEqual(M.creates.length, soTao + 2, 'không gửi yêu cầu nào cho gói sai');
+    // Classic vẫn như cũ (importQuizzesNext không phải true → không có khoá này)
+    await c.importPackage('1', { bytes: goiCL.bytes, fileName: goiCL.fileName, bankName: 'Toán 12 – NQ', importQuizzesNext: 'true' });
+    assert.deepStrictEqual(M.creates[soTao + 2].body.settings, { question_bank_name: 'Toán 12 – NQ', overwrite_quizzes: true });
+
     // --- allowlist qua HTTP: Canvas giả không bao giờ nhận yêu cầu bị chặn ---
     const hdr = { 'x-nh-client': '1', cookie: I.COOKIE_SESSION + '=' + jar.jar[I.COOKIE_SESSION] };
     await assert.rejects(c.request('GET', '/api/v1/accounts/1/users'), e => e.status === 403 && /danh sách được phép/.test(e.message));
@@ -666,7 +694,7 @@ test('tích hợp đầy đủ với Canvas giả lập', async () => {
     r = await raw(base, 'POST', '/api/canvas?op=upload&url=' + encodeURIComponent(M.base + '/files?token=jwt-456'), { 'x-nh-client': '1', 'content-type': 'multipart/form-data; boundary=b' }, mp);
     assert.strictEqual(r.status, 401, 'không cho dùng như proxy mở');
     const to = Buffer.alloc(I.UPLOAD_MAX + 10, 65);
-    r = await raw(base, 'POST', '/api/canvas?op=upload&url=' + encodeURIComponent(M.base + '/files?token=jwt-456'), Object.assign({ 'content-type': 'multipart/form-data; boundary=b' }, hdr), to);
+    r = await raw(base, 'POST', '/api/canvas?op=upload&course=1&migration=456&url=' + encodeURIComponent(M.base + '/files?token=jwt-456'), Object.assign({ 'content-type': 'multipart/form-data; boundary=b' }, hdr), to);
     assert.strictEqual(r.status, 413);
     await assert.rejects(c.importPackage('1', { bytes: new Uint8Array(4 * 1024 * 1024), fileName: 'to.zip' }), e => e.code === 'qua_lon' && /4 MB/.test(e.message));
 
@@ -773,14 +801,14 @@ test('Vercel: dùng req.body đã đọc sẵn (Buffer/đối tượng JSON)', a
     // op=upload: Vercel chỉ giữ req.body (Buffer) cho application/octet-stream → multipart dựng sẵn + X-Upload-Content-Type
     const mp = Buffer.from('--ranh\r\nContent-Disposition: form-data; name="filename"\r\n\r\nb.zip\r\n' +
       '--ranh\r\nContent-Disposition: form-data; name="file"; filename="b.zip"\r\nContent-Type: application/zip\r\n\r\nPK\u0003\u0004\r\n--ranh--\r\n', 'latin1');
-    o = await goi(mp, '/api/canvas?op=upload&url=' + encodeURIComponent(M.base + '/files?token=jwt-456'),
+    o = await goi(mp, '/api/canvas?op=upload&course=9&migration=456&url=' + encodeURIComponent(M.base + '/files?token=jwt-456'),
       { 'content-type': 'application/octet-stream', 'x-upload-content-type': 'multipart/form-data; boundary=ranh' });
     assert.strictEqual(o.status, 200, o.body);
     assert.deepStrictEqual(JSON.parse(o.body), { ok: true, status: 201, confirmed: false, file: { id: 99, upload_status: 'success' } });
     assert.deepStrictEqual(M.uploads[0].parts.map(p => p.name), ['filename', 'file']);
     assert.strictEqual(M.uploads[0].parts[1].body.toString('latin1'), 'PK\u0003\u0004');
     assert.strictEqual(M.uploads[0].headers['content-type'], 'multipart/form-data; boundary=ranh');
-    o = await goi(mp, '/api/canvas?op=upload&url=' + encodeURIComponent(M.base + '/files?token=jwt-456'),
+    o = await goi(mp, '/api/canvas?op=upload&course=9&migration=456&url=' + encodeURIComponent(M.base + '/files?token=jwt-456'),
       { 'content-type': 'application/octet-stream', 'x-upload-content-type': 'text/html' });
     assert.strictEqual(o.status, 415);
   } finally {

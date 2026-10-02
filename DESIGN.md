@@ -168,6 +168,33 @@ Mọi từ khoá không phân biệt hoa thường, chấp nhận có/không d�
 6. Không gì cả → `essay` (cảnh báo `info`: "chưa có đáp án → tự luận, giáo viên chấm tay").
 Loại mặc định của PHẦN (nếu có) chỉ dùng để phân xử khi mơ hồ.
 
+### 3.4 Đề Word không theo mẫu (đọc từ đề thật của trường, fixture tổng hợp cùng cấu trúc)
+- **Hai chế độ đọc**: tài liệu có `Câu N` giữ cách đọc §3.2; tài liệu không có chữ "Câu" đọc theo **số trần**
+  (`12.`, `12)`, `14<tab>`).
+- **Nhóm hướng dẫn**: dòng "Questions 1-6" / "từ câu 18 đến 22" hoặc lệnh bài tập ("1. Look and CIRCLE … (…/5 points)")
+  mở một nhóm; chữ và bài đọc của nhóm thành `stimulus` của các câu trong nhóm (nhóm lồng được).
+- **Tiêu đề mục**: "I. Vocabulary", "B. GRAMMAR", "READING PASSAGE 2", "Part 2" là tiêu đề, không dính vào phương án trước.
+- **Bảng**: bảng câu hỏi đọc theo hàng; bảng một ô bọc ngoài được bỏ bọc. Câu ví dụ "0." bị bỏ (cảnh báo info).
+- **Đáp án đánh dấu** (đề IELTS tô vàng): chữ tô ngay sau số câu nội dòng, đáp án trong ngoặc cuối dòng (`[FALSE]`,
+  `[C]`, `[v]`), nhãn phương án tô nền; danh sách lựa chọn dùng chung (A–F, TRUE/FALSE/NOT GIVEN, đoạn A–G) biến câu
+  thành trắc nghiệm. "Answer: ____" là dòng viết, không phải đáp án.
+- **Mẫu upload câu hỏi**: `Câu N [OC-NB]:` (một đáp án), `[MC]` (nhiều), `[TF]`, `[FB]`/`[SDL]` với ô `[[1]]` khai báo
+  `[[1]] = 50` + lựa chọn A) B)…, `[ES]` tự luận, `[EM]` câu chùm gồm câu con `[TF]: …`; `ANSWER: A=30, B=-10` (trọng số
+  > 0 = đúng). Chỉ nhận theo cú pháp (chưa xác định được nền tảng gốc).
+- Lỗi đối tượng ChemWindow/OLE không còn gợi ý MathType; đoạn dẫn dùng chung chỉ báo cảnh báo một lần.
+
+### 3.5 File đáp án riêng (HDC / KEY / ĐÁP ÁN)
+| Hàm | Mô tả |
+|---|---|
+| `parseDocx(u8, {fileName, answerKey?})` | File **chỉ có đáp án** → `{banks: [], issues, keyOnly: true, key}` (không phải ngân hàng). `answerKey` (một hoặc mảng kết quả `parseAnswerKey`) → áp ngay khi đọc. |
+| `parseAnswerKey(u8, {fileName}) → {answers, count, issues}` | `answers = { khoáPhần: { sốCâu: đápÁn } }` (khoá phần `'1'`/`'2'`/`'3'` theo "Phần I/II/III", hoặc `''`). Đọc bảng "Câu – Đáp án", dòng `Câu 1: A` / `36. sentence`, bảng THPT 2025 (Phần II Đ/S từng ý, Phần III ô chữ số → `12,5`), bỏ mã năng lực cuối (`A - 4.0.TA.1.3`). |
+| `applyAnswerKey(banks, key) → {matched, filled, same, conflicts, mismatched, unused, issues}` | Sửa câu **tại chỗ**, chỉ điền câu còn thiếu; câu đã có đáp án khác → giữ đáp án trong đề + `warn`. Đáp án ngắn cho câu tự luận → `short`, dài → vào `feedback`. Kiểm tra lại câu (`validateQuestion`). Áp lại lần hai vô hại (đã có → "trùng"). |
+| `isAnswerKeyName(name)`, `answerKeyBaseName(name)` | Tên file có chữ chỉ đáp án (HDC, KEY, ĐÁP ÁN, Hướng dẫn chấm, Lời giải…) / tên gốc bỏ các chữ đó (`26.12.HH.KS.HDC.0301` → `26.12.hh.ks.0301`) để ghép với file đề. |
+
+Giới hạn: hướng dẫn chấm chỉ có lời giải tự luận (không chữ cái / Đ/S / số) không tự nhận là file đáp án (giao diện
+có nút "Đây là file đáp án" gọi `parseAnswerKey`); danh sách tiêu đề IELTS > 8 lựa chọn (i–x) thành trả lời ngắn;
+text box vẫn bị bỏ (kèm cảnh báo).
+
 ## 4. Mẫu Excel (`js/xlsx.js`)
 
 `parseXlsx(u8, {fileName, extraImages: {name: Uint8Array}}) → Promise<{banks, issues}>`
@@ -195,7 +222,14 @@ Loại mặc định của PHẦN (nếu có) chỉ dùng để phân xử khi m
   neo `xdr:from/xdr:row`) gán cho câu ở dòng đó, "Văn bản thay thế" (`xdr:cNvPr descr`) → `alt`; (3) ảnh "Place in cell" (`xl/richData`) nếu đọc được.
   Ảnh đặt sau nội dung câu. Thiếu ảnh → `error`.
 - Ô gộp, ô công thức (`<f>` dùng giá trị `<v>`), ô kiểu `s`/`inlineStr`/`str`/`n`/`b` đều phải đọc đúng;
-  số dạng `0.25` → hiển thị theo chuỗi gốc khi có thể (`numFmt` không cần).
+  số thường `0.25` hiện bằng dấu chấm như chuỗi gốc (giáo viên máy tiếng Việt thấy `0,25` — quyết định sản phẩm còn mở).
+- **Định dạng số** (`xl/styles.xml`, `numFmt`, hệ ngày 1904): ngày, giờ, phần trăm, phân số hiện như Excel hiển thị
+  (`25%`, `1/2`), và ô phần trăm/ngày **không** đưa số gốc vào đáp án số.
+- **Bẫy ngày của Excel**: gõ `1/2`, `8/3` ở ô định dạng chung thành ngày. Ngày **không có năm** ở cột nội dung,
+  phương án, đáp án, điểm, lời giải → `error` nêu ô và cách sửa (định dạng ô Text hoặc gõ `'1/2`), câu không xuất.
+  Ngày **có năm** → `warn` (ngày/tháng có thể đảo trên máy tiếng Anh).
+- Đối tượng nổi không phải ảnh (text box, Equation, biểu đồ, hình vẽ) trên dòng câu hỏi, dòng **ẩn / bị lọc** →
+  `warn` đúng dòng. Ảnh "Place in Cell" lấy alt từ ô mô tả của Excel, trừ khi đó là đường dẫn / tên file (Excel tự điền).
 
 ## 5. Xuất QTI (`js/qti.js`)
 
@@ -257,6 +291,18 @@ opts = {
 `feedback` → `general_fb` (FB_COND + FB_BLOCK). Thứ tự phần tử và escape đúng reconciled §2.0
 (entity-escape, không CDATA; bọc stem trong `<div>`).
 
+**Sai khác có chủ đích so với reconciled §2.0 (tìm ra bằng bộ mô phỏng Canvas, `tests/sim-chay.cjs`):**
+- Phương án, vế trái ghép nối và **lời giải** là HTML nhưng thực chất **chỉ có chữ** (sau khi bỏ `p`/`div`/`span` không
+  thuộc tính và `<br>` đầu/cuối) mà chứa `&`, `<`, `>` hoặc dấu cách cứng → xuất `texttype="text/plain"` với chữ đã giải
+  thực thể. Lý do: Canvas lưu chuỗi đã thoát ("2 &amp;lt; 3") vào trường chữ thuần và trang làm bài in qua ERB escape →
+  học sinh thấy nguyên `&lt;`. (FB_BLOCK của lời giải vì vậy có thể là `text/plain`, không luôn `text/html`.)
+  `tests/kiem-qti.cjs` cảnh báo `html-escaped-text` khi gặp mảnh `text/html` dạng này (phương án, vế trái, phản hồi).
+- Lựa chọn thả xuống, vế phải ghép nối, vế phải gây nhiễu: gộp xuống dòng và khoảng trắng kép.
+- `math: 'image'`: `<math>` rỗng bị bỏ (không giữ kèm cảnh báo).
+- **Lưới an toàn**: HTML lẽ ra đã làm sạch mà còn `script`, `on…=`, `javascript:`… → làm sạch lại bằng
+  `html.cleanForCanvas`; không có `html.js` → câu đó **không xuất**. (Canvas chỉ bóc thẻ bọc ngoài cùng: `<center><script>`
+  trong lời giải còn `<script>` sau khi import.)
+
 ### 5.3 Kiểm tra trước khi đóng gói (lỗi → không xuất câu đó, trả về trong `issues`)
 - mc: đúng 1 phương án đúng, ≥ 2 phương án; ma: ≥ 1 đúng, ≥ 2 phương án.
 - tf: ≥ 1 ý, mỗi ý có `value` boolean.
@@ -266,6 +312,8 @@ opts = {
 - matching: ≥ 2 cặp; vế phải text thuần, không ảnh.
 - Mọi `<img src>` trỏ tới file có trong `images`; không còn `data:` URI.
 - Độ dài stem (sau khi chèn đoạn dẫn) ≤ 15 000 ký tự, nếu không → `warn` và gợi ý `stimulus:'none'`.
+- Stem trống: `core.validateQuestion` chỉ cảnh báo khi **cả đoạn dẫn** cũng trống (câu điền bài đọc / ngữ âm có đề nằm
+  hẳn trong đoạn dẫn là hợp lệ); xuất với `stimulus:'none'` mà câu như vậy → qti `warn` "chỉ nằm trong đoạn dẫn" (vẫn xuất).
 - Điểm > 0 (trừ text).
 
 ## 6. Gói SCORM (`js/scorm.js`)
@@ -289,6 +337,9 @@ bộ phân tích HTML chịu lỗi tự viết (thẻ rỗng, thuộc tính khô
 - Giữ thẻ trong allowlist Canvas (reconciled §5) + MathML; bỏ `script style svg input button label`
   (svg → cảnh báo); `<s>` → `<del>`; class đã biết → style inline; `var(--x)` → giá trị.
 - `<mspace width>` → `<mtext>&#x2009;</mtext>`; bỏ thuộc tính không có trong allowlist MathML.
+- MathML: `style` qua **cùng allowlist CSS** với HTML (Canvas xoá `font-weight`, `opacity`…); `script`/`style`/thẻ nhúng
+  trong MathML bị bỏ **cả nội dung** (không thành chữ hiện ra); `<semantics>` lấy con MathML thật đầu tiên; thẻ token
+  giữ chữ của thẻ lồng; `<math>` rỗng bị bỏ. Thẻ lạ bọc ngoài (`<center>`, `<foo>`) không che được script/style/`on*`.
 - `img src`: ánh xạ đường dẫn gốc → `images/<tên ASCII>`; `data:` URI → tách thành file.
 - Thuộc tính `on*`, `loading`, `contenteditable` bị bỏ.
 `toPlainText(html)` cho các ô text thuần (dropdown, vế phải ghép nối): bỏ thẻ, MathML → chữ Unicode
@@ -311,41 +362,93 @@ bộ phân tích HTML chịu lỗi tự viết (thẻ rỗng, thuộc tính khô
 Canvas không cho trình duyệt gọi API từ tên miền khác (không CORS) → cần máy chủ trung gian.
 Theo `docs/nghien-cuu/rest-api.md`.
 - `api/canvas.js` (Vercel, CommonJS `module.exports = async (req,res)=>…`), chọn thao tác bằng `?op=`:
-  `config` (trả `{enabled, base, oauth, personalToken}`), `login` / `callback` / `logout` (OAuth2
+  `config` (trả `{enabled, base, oauth, personalToken, loggedIn, user}`), `login` / `callback` / `logout` (OAuth2
   Developer Key; token lưu trong cookie httpOnly mã hoá AES-256-GCM bằng `SESSION_SECRET`, tự
   refresh khi hết hạn), `proxy` (`&path=/api/v1/...` — **chỉ** tới `CANVAS_BASE_URL`, đường dẫn
   khớp allowlist: users/self, courses (list, permissions, content_migrations + migrators + issues),
   question_banks, progress), `upload` (dự phòng khi upload_url không phải inst-fs, ≤ 4 MB).
   Biến môi trường: `CANVAS_BASE_URL`, `CANVAS_CLIENT_ID`, `CANVAS_CLIENT_SECRET`, `SESSION_SECRET`,
-  `ALLOW_PERSONAL_TOKEN` (=1 cho chạy thử bằng token cá nhân gửi qua header `X-Canvas-Token`).
+  `ALLOW_PERSONAL_TOKEN` (=1 cho chạy thử bằng token cá nhân gửi qua header `X-Canvas-Token`), `APP_URL` (**nên đặt**
+  trên Vercel: Canvas so Redirect URI nguyên văn, tên miền preview sẽ bị từ chối), `CANVAS_SCOPES`.
   Lỗi cấu hình trả 4xx (không 5xx). Không ghi log token.
+- **Phạm vi (scope)**: xin đúng **10** scope (`SCOPES` trong `api/canvas.js`): `GET users/:id`, `GET courses`,
+  `GET courses/:course_id/permissions`, `GET question_banks`, `GET …/content_migrations/migrators`,
+  `POST/GET …/content_migrations`, `GET …/content_migrations/:id`, `GET …/migration_issues`, `GET progress/:id`.
+  Khoá cấu hình 13 scope cũ (rest-api.md §5b) vẫn chạy. Developer Key cần **Allow Include Parameters** (Enforce
+  Scopes bỏ `include[]=term` nếu không bật). 401 không kèm `WWW-Authenticate` = thiếu scope → 403 `thieu_scope`
+  (không làm mới token vô ích).
+- **Bảo mật** (đã có test `tests/bao-mat.test.cjs`): PKCE S256 luôn bật (verifier suy từ state bằng HMAC
+  `SESSION_SECRET`); state/code kiểm định dạng; cookie `__Host-` trên https; host dựng `redirect_uri` được kiểm;
+  phiên không có hạn bị từ chối; tối đa 2 lần làm mới token mỗi yêu cầu; **đăng xuất chỉ POST + `X-NH-Client`**, làm mới
+  trước khi thu hồi nếu token hết hạn; proxy chặn `as_user_id`/`access_token`/`_method`/`api_key` ở query và thân JSON;
+  phản hồi không phải JSON → `text/plain`; mọi phản hồi có CSP `sandbox` + `Referrer-Policy: no-referrer`; phản hồi > 4 MB
+  → 502; `Sec-Fetch-Site` khác nguồn → 403. **`op=upload` phải kèm `&course=&migration=`**: máy chủ hỏi Canvas (bằng
+  token của chính người dùng) lần nhập đó có thật và đang `pre_processing` rồi mới chuyển tiếp; chỉ tới inst-fs
+  (`*.inscloudgate.net`, `inst-fs*.instructure.com`), bucket S3, hoặc chính máy Canvas.
+- Chưa thử trên 4015.instructure.com thật: PKCE, cookie `__Host-`, kiểm `Sec-Fetch-Site`. Không có rate limit trong
+  hàm (mỗi instance Vercel một bộ nhớ, cả trường chung một IP) → khuyên luật Vercel Firewall cho `/api/canvas`.
 - `server.js`: chạy cục bộ `node server.js` (cổng 8787) — phục vụ file tĩnh + cùng handler
   `api/canvas.js` tại `/api/canvas` (đọc biến môi trường từ `.env` nếu có, tự viết parser).
 - `js/canvas-api.js` (trình duyệt): `getConfig()`, `me()`, `listCourses()`, `listBanks(courseId)`,
-  `importPackage(courseId, {bytes, fileName, bankName, overwrite:true, onProgress})` = tạo
-  content_migration `qti_converter` (JSON body, `settings.overwrite_quizzes` = true boolean) →
-  POST multipart thẳng tới `pre_attachment.upload_url` (inst-fs cho phép CORS; nếu không phải
-  inst-fs thì qua `op=upload`) với mọi `upload_params` rồi `file` cuối → theo dõi
+  `importPackage(courseId, {bytes, fileName, bankName, overwrite:true, importQuizzesNext:false, onProgress, signal})` = tạo
+  content_migration `qti_converter` (JSON body, khoá boolean thật — chuỗi `"false"` bị Ruby coi là true) →
+  POST multipart thẳng tới `pre_attachment.upload_url` (inst-fs cho phép CORS, `credentials:'omit'`, không Referer; nếu
+  không phải inst-fs thì qua `op=upload` kèm `course` + `migration`) với mọi `upload_params` rồi `file` cuối → theo dõi
   `progress_url`/migration (xử lý cả `queued`) → lấy `migration_issues`. Xử lý 403/429 giới hạn
-  tốc độ bằng chờ lùi. Chỉ chạy tuần tự từng gói một khoá học.
-- API chỉ đưa được vào **Question Bank (Classic)** (gói `classic`). Item Bank của New Quizzes
-  **không có API** → giao diện ghi rõ: dùng nút tải gói rồi import tay (4 bước).
+  tốc độ bằng chờ lùi. Chỉ chạy tuần tự từng gói một khoá học; **mọi yêu cầu tới `/api/canvas` chạy lần lượt** (kể cả
+  đăng xuất) để hai lần làm mới token song song không để lại token chết trong cookie.
+- **Hai đích của `importPackage`:**
+
+  | | Classic (mặc định) | `importQuizzesNext: true` |
+  |---|---|---|
+  | Gói | `classic` (objectbank, chỉ ngân hàng) | `itembank` (một `<assessment>` chứa mọi câu) — thiếu `assessment_meta.xml` → `CanvasError` `goi_sai`, không gửi gì |
+  | `settings` | `question_bank_name` (+`question_bank_id`), `overwrite_quizzes: true` trừ khi `overwrite:false` | `import_quizzes_next: true`; không gửi ngân hàng mặc định (Canvas khoá ô này khi chọn New Quizzes); `overwrite_quizzes` chỉ khi `overwrite === true` |
+  | Kết quả trên Canvas | Ngân hàng Classic (Bản cũ) tên = tên ngân hàng; gửi lại ghi đè đúng câu | Canvas nhập như Classic rồi chuyển **bài kiểm tra** thành **New Quiz cùng tên** (`QuizzesNext::Importers::CourseContentImporter`, cần khoá học bật `quizzes_next`; không bật → bài Classic). Mỗi lần gửi một New Quiz mới. Có cờ chuyển ngân hàng (`new_quizzes_bank_migrations`) thì **có thể** thêm Item Bank — **CHƯA XÁC NHẬN** |
+
+  Kết quả trả thêm `importQuizzesNext`. `hasAssessment(u8)` / `zipEntryNames(u8)` đọc thư mục trung tâm của zip.
+- Item Bank của New Quizzes **không có API** → giao diện ghi rõ: muốn chắc chắn có Item Bank thì tải gói rồi import tay.
 
 ## 10. Giao diện (`index.html` + `js/app.js` + `huong-dan.html`)
 Tiếng Việt, màu trường (navy `#23328C`, đỏ `#D21235`, vàng `#FFAD00`), font Be Vietnam Pro
 (Google Fonts, có font hệ thống dự phòng), chạy tốt trên máy tính và iPad.
-1. **Nạp đề**: vùng kéo thả nhận `.docx`, `.xlsx`, `.zip` (SCORM hoặc zip ảnh), ảnh rời;
+1. **Nạp đề**: vùng kéo thả nhận `.docx`, `.xlsx`, `.zip` (SCORM hoặc zip ảnh), ảnh rời, file đáp án `.docx`;
    nút **Tải mẫu Word**, **Tải mẫu Excel**, **Hướng dẫn**.
+   **File đáp án** (`parseDocx` trả `keyOnly`): một dòng riêng (biểu tượng "ĐA", số đáp án) với ô chọn **Điền đáp án vào
+   file đề**. Ghép tự động (`app.chonDeChoKey(tenKey, dsDe, docx, choMotDe)`): (1) `answerKeyBaseName` trùng hẳn và duy
+   nhất; (2) từ khoá tên (bỏ từ chung "đề/thi/kiểm/tra/chưa…") chung ≥ 80 % tập nhỏ hơn, có từ chứa chữ cái, hơn hẳn đề
+   khác; (3) chỉ có một file đề **và** file đề đó nạp cùng lần hoặc trước file đáp án (`ng.lo`) — file đề tên khác nạp
+   *sau* có thể là đề khác nên không tự ghép. Ứng viên chưa đọc xong → chờ. Áp bằng `app.apDapAnChoMuc` (=
+   `docx.applyAnswerKey` + xoá bộ nhớ đệm lỗi của mục) → bước 2 soát lại; kết quả "khớp M — điền F, trùng S, khác C" hiện
+   trên cả hai dòng file, cảnh báo "khác đề" ở từng câu. **Đổi đích / "Không điền" / bỏ file đáp án → đọc lại file đề cũ
+   từ byte gốc** (giữ tên, điểm, câu bỏ chọn đã sửa) rồi áp lại các file đáp án còn trỏ vào nó. File tên kiểu đáp án
+   (không phải "…chưa/không có đáp án…") mà đọc ra đề → nút **Đây là file đáp án** (`parseAnswerKey`). Mọi thao tác này
+   xếp chung hàng đợi với việc nạp file.
 2. **Soát câu hỏi**: tóm tắt (số câu theo loại, tổng điểm, số lỗi/cảnh báo); sửa tên ngân hàng;
    từng câu hiển thị như học sinh thấy (MathML, ảnh qua object URL), đáp án đúng tô xanh,
    các cách viết được chấp nhận, điểm (sửa được), lời giải, lỗi/cảnh báo; lọc "chỉ câu có lỗi";
    bỏ chọn câu không muốn xuất.
-3. **Xuất**: chọn đích (Item Bank – New Quizzes / Question Bank – Classic), cách xử lý Đúng/Sai,
+3. **Xuất**: chọn đích (Item Bank – New Quizzes **mặc định** / Question Bank – Classic), cách xử lý Đúng/Sai,
    đoạn dẫn, công thức → **Tải gói QTI**; hiện hướng dẫn import đúng đích đã chọn (nhãn menu
-   Canvas tiếng Việt + tiếng Anh).
+   Canvas tiếng Việt + tiếng Anh). Item Bank: Item Banks ở điều hướng khoá học → + Add Bank → Create Bank → mở ngân
+   hàng **vừa tạo, còn trống** → ⋮ (Options) → Import Content → chọn zip → Import; một zip một ngân hàng; chia sẻ bằng
+   ⋮ → Share; lưu ý cả hai hệ đều tên "Ngân Hàng Câu Hỏi" (Classic thêm "(Bản cũ)"). Khi `op=config` có `base`, đầu
+   hướng dẫn có dòng **"Canvas của trường: 4015.instructure.com"** (liên kết).
 4. **Gửi thẳng lên Canvas** (chỉ hiện khi `/api/canvas?op=config` trả `enabled`): đăng nhập Canvas
-   (OAuth) hoặc dán token cá nhân (chế độ thử), chọn khoá học, xem ngân hàng hiện có, gửi,
-   thanh tiến trình, danh sách vấn đề sau import.
+   (OAuth) hoặc dán token cá nhân (chế độ thử), chọn khoá học, xem ngân hàng Classic hiện có, chọn **Đưa vào đâu?**
+   (**Question Bank – Classic** — ô "Ghi đè" — hoặc **Chuyển sang New Quizzes khi nhập** — nhãn "cần thử lần đầu" cho
+   phần Item Bank, ghi chú "mỗi lần gửi tạo một New Quiz mới"; lựa chọn nhớ trong `localStorage` `nh-canvas-dich`),
+   gửi, thanh tiến trình, danh sách vấn đề sau import. Xong: liên kết `…/courses/<id>/quizzes` (New Quizzes) hoặc
+   `…/question_banks` (Classic) và `…/courses/<id>/content_migrations` (các lần nhập + vấn đề), dựng từ `config.base`
+   (`app.linkCanvas`). Liên kết "Sửa trên Canvas" của từng vấn đề chỉ hiện khi trỏ về đúng `base`.
+
+**Hiện nội dung câu hỏi** (lớp bảo vệ thứ hai sau `html.cleanForCanvas`/bộ đọc file): `<template>` → bỏ thẻ
+`app.THE_CAM` (script, style, iframe, object, embed, link, meta, base, form, svg, animate, set, animateMotion,
+animateTransform, foreignObject, use…) cùng nội dung; bỏ thuộc tính `app.thuocTinhNguyHiem`: `on*`, `id`/`name` (không cho
+nội dung câu chiếm id của giao diện như `vung-thong-bao`), `form`, `srcdoc`, `srcset`, `ping`, `formaction`, URL chạy mã
+(`javascript:`/`vbscript:`/`data:` trừ ảnh PNG/JPG/GIF — so sau khi bỏ ký tự điều khiển/khoảng trắng, chặn
+`java<TAB>script:`), `style` có `expression()`/`url(javascript:)`. `index.html` có CSP meta tối thiểu
+`object-src 'none'; base-uri 'none'` (không giới hạn script: iframe `srcdoc` của bộ đọc SCORM kế thừa CSP của trang,
+và trang phải chạy được bằng `file://`). CSP đầy đủ nên đặt bằng header trên Vercel (`vercel.json`, chưa có).
 
 ## 11. Mẫu (`tools/tao-mau.cjs` → `mau/`)
 Sinh bằng Node, không thư viện (dùng `js/zip.js`):
@@ -354,6 +457,17 @@ Sinh bằng Node, không thư viện (dùng `js/zip.js`):
   bảng đáp án cuối.
 - `mau/Mau-ngan-hang-cau-hoi.xlsx`: sheet `Câu hỏi` (tiêu đề cố định, cột rộng hợp lý, danh sách
   thả xuống cho `Loại câu` và `Mức độ`, dòng ví dụ mọi loại) + sheet `Hướng dẫn`.
+- Đã mở bằng Word/Excel 365 thật (không phải sửa chữa file). Cột **A…H và Đáp án định dạng Text** (cả các dòng trống
+  giáo viên thêm sau) để `1/2` không thành ngày; `Nội dung` và `Lời giải` để định dạng chung (ô Text > 255 ký tự hiện
+  `####`). Dòng mới tự xuống dòng. **Ảnh ví dụ di chuyển và co giãn theo ô** (xoá dòng ví dụ là xoá luôn ảnh — Excel 365
+  đã xác nhận), cột Ảnh rộng đủ một ảnh, mục 4 của sheet Hướng dẫn sang trang in mới.
+- Word: font Be Vietnam Pro dự phòng **Arial** (máy không cài Be Vietnam Pro).
+- Lời hướng dẫn viết cho giáo viên chưa từng dùng công cụ: tên menu Canvas tiếng Việt, mở ngân hàng **trống**, lưu
+  .docx/.xlsx, đánh số tự động của Word dùng được, không đánh dấu phương án sai, số thập phân dùng dấu chấm (hoặc
+  dùng TLN để nhận cả `2,5` và `2.5`), bẫy ngày, Place in Cell, cách xoá dòng ví dụ, không gộp ô nội dung.
+- Fixture do Office thật tạo: `tests/fixtures/xlsx/dien-mau-bang-office.ps1` (office-giao-vien.xlsx/.docx,
+  office-tu-lam.xlsx) và `tests/fixtures/docx/tao-word.ps1` (word-*.docx). Chạy nền / tiến trình riêng; Office ẩn,
+  `DisplayAlerts=0`, đối số `SaveAs2`/`Quit` truyền theo tham chiếu (`[ref]`), chỉ dừng tiến trình chính script tạo (PID).
 
 ## 12. Kiểm thử (`tests/chay-het.cjs`, chỉ Node, không thư viện)
 - Đơn vị: core (parseXml, answerVariants, bankIdent), zip (vòng tròn ghi/đọc), omml, latex, math,
@@ -366,8 +480,22 @@ Sinh bằng Node, không thư viện (dùng `js/zip.js`):
   Ảnh công thức `img.equation_image` với `src="/equation_images/<LaTeX mã hoá URL 2 lần>"` (R§4) không
   phải file trong gói: bộ kiểm tra chỉ đòi có `class="equation_image"` và giải mã được 2 lần.
 - **Đầu-cuối** (`tests/e2e.test.cjs`): 2 mẫu + mọi gói SCORM + fixture docx/xlsx + một Excel tự dựng
-  (chữ thuần có `<`, `&`) → lọc như giao diện (`app.banksDeXuat`) → `qti.buildPackages` với 8 tổ hợp
-  (itembank|classic × tfMode × math) → `kiem-qti` 0 lỗi, 0 cảnh báo; **đối chiếu đáp án** Canvas sẽ chấm
+  (chữ thuần có `<`, `&`) → lọc như giao diện (`app.banksDeXuat`) → `qti.buildPackages` với 9 tổ hợp
+  (itembank|classic × tfMode × math, thêm một tổ hợp không chèn đoạn dẫn / không lời giải / tên câu theo nội dung)
+  → `kiem-qti` 0 lỗi, 0 cảnh báo; **đối chiếu đáp án** Canvas sẽ chấm
   đúng (mô phỏng importer + `grade()`) với đáp án giáo viên đánh dấu, cho từng câu, kèm phép chấm sai.
 - **Nạp trang** (`tests/nap-trang.test.cjs`): `<script>` của `index.html` đúng thứ tự, `node --check` mọi
   file JS, nạp trong vm kiểu trình duyệt — chỉ `canvas-api.js`/`app.js` được chạm DOM lúc nạp.
+- **Bộ mô phỏng Canvas** (`tests/sim-chay.cjs`, `tests/canvas-sim.test.cjs`): import.cjs + grade.cjs + bộ phân tích
+  HTML5 của bộ mô phỏng nằm **ngoài repo**, chỉ đọc qua biến `CANVAS_SIM=<thư mục>`; không có → in "BỎ QUA" (các kiểm
+  tra tĩnh vẫn chạy). Đối chiếu từng trường sau import (kể cả mỗi `[blank]` đúng một lần, trang làm bài có đúng một ô
+  mỗi chỗ trống) + chấm thử đáp án giáo viên / đáp án sai. Sai khác là hành vi Canvas thật ghi trong `DA_BIET`.
+- **Bảo mật** (`tests/bao-mat.test.cjs`): Canvas giả lập theo mã nguồn (redirect_uri nguyên văn, mã dùng một lần, PKCE,
+  làm mới không trả refresh_token mới, 401 thiếu scope), proxy, op=upload, server.js (tên 8.3, Host), sandbox SCORM.
+- **Word thật** (`tests/docx-word.test.cjs`): fixture do Word sinh (OMath, đánh số "Câu %1." theo kiểu đoạn, tô nền,
+  bảng gộp/lồng, ảnh PNG). `tests/docx.test.cjs` kiểm cả đề thật trong `Downloads` khi có (bỏ qua khi không).
+- **Giao diện** (`tests/app.test.cjs`): ghép file đáp án ↔ file đề theo tên, điền đáp án vào fixture tổng hợp
+  (THPT + HDC, tiếng Anh + KEY, tiểu học + KEY) rồi xuất qua `kiem-qti` đạt; `thuocTinhNguyHiem`/`urlNguyHiem`;
+  `linkCanvas`; thứ tự các bước Item Bank; bước 4 có hai đích và gửi đúng `importQuizzesNext`.
+  `tests/api.test.cjs`: `import_quizzes_next: true` (boolean JSON, không kèm ngân hàng mặc định), gói objectbank bị từ
+  chối (`goi_sai`) trước khi gửi yêu cầu nào.

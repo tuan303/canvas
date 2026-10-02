@@ -38,6 +38,9 @@
   var RE_TEN_ANH = /^[a-z0-9][a-z0-9_-]{0,80}\.(png|jpe?g|gif)$/;
   var GIOI_HAN_STEM = core.STEM_LIMIT || 15000;
   var DUNG = 'Đúng', SAI = 'Sai';
+  var NBSP = String.fromCharCode(160);
+  // dấu hiệu HTML chưa làm sạch: thẻ chạy mã / nhúng / biểu mẫu, thuộc tính sự kiện, giao thức script
+  var RE_NGUY_HIEM = /<\s*\/?\s*(script|style|iframe|frame|frameset|object|embed|applet|svg|form|input|button|textarea|select|template|noscript|link|meta|base)\b|\son[a-z]+\s*=|(java|vb)script\s*:/i;
 
   var NS_QTI = {
     xmlns: 'http://www.imsglobal.org/xsd/ims_qtiasiv1p2',
@@ -144,7 +147,8 @@
   function chuThuan(s, dem) {
     if (s == null) return s;
     var goc = nfc(String(s));
-    if (!coThe(goc)) return goc;
+    // ô một dòng (ô chọn, ô điền, vế phải): xuống dòng / khoảng trắng kép không gõ hay hiện được → gộp
+    if (!coThe(goc)) return goc.replace(/\s+/g, ' ').trim();
     if (/<img\b/i.test(goc)) return goc;
     var h = layModule('html'), t = null;
     if (h && typeof h.toPlainText === 'function') {
@@ -241,6 +245,8 @@
     if (!html || !/<math\b/i.test(html)) return html;
     var m = layModule('math');
     return String(html).replace(/<math\b[^>]*>[\s\S]*?<\/math\s*>/gi, function (mm) {
+      // công thức rỗng (không chữ nào): không hiện gì → bỏ, khỏi giữ MathML rỗng kèm cảnh báo
+      if (!giaiThucThe(mm.replace(/<[^>]*>/g, '')).replace(/[\s\u200B-\u200D\u2060]/g, '')) return '';
       var tex = null;
       try { if (m && typeof m.mathmlToLatex === 'function') tex = m.mathmlToLatex(mm); } catch (e) { tex = null; }
       if (typeof tex !== 'string' || !tex.trim()) { dem.loi++; return mm; }
@@ -260,14 +266,38 @@
   function truongMeta(nhan, gt) { return E('qtimetadatafield', null, [T('fieldlabel', null, nhan), T('fieldentry', null, gt)]); }
   function matHtml(h) { return E('material', null, [T('mattext', { texttype: 'text/html' }, h)]); }
   function matText(s) { return E('material', null, [T('mattext', { texttype: 'text/plain' }, s)]); }
-  function matTuChon(h) { return coMarkup(h) ? matHtml(h) : matText(h); } // html_mat_text của Canvas
+  /*
+   * HTML "chỉ có chữ": sau khi bỏ các lớp <p>/<div>/<span> không thuộc tính bọc ngoài thì không còn thẻ nào.
+   * Canvas detect_html (html_helper.rb#L114-L132, remove_extraneous_nodes) coi mảnh này là CHỮ THUẦN nhưng lại
+   * lưu chuỗi HTML đã escape ("2 &lt; 3", "a&nbsp;b") vào trường chữ (text / left / neutral_comments), và trang làm
+   * bài in trường chữ qua ERB escape → học sinh thấy nguyên "&lt;". → trả chữ đã giải thực thể để xuất text/plain
+   * (Python ghi <div class="text"> → Canvas lấy đúng chữ). Có thẻ thật → null (giữ text/html).
+   */
+  function chiLaChu(h) {
+    // như remove_extraneous_nodes: bỏ khoảng trắng / <br> ở hai đầu rồi bóc một lớp bọc, lặp lại
+    var BIEN = /^(?:\s|<br\s*\/?>)+|(?:\s|<br\s*\/?>)+$/gi;
+    var s = String(h == null ? '' : h).replace(BIEN, ''), m;
+    while ((m = /^<(p|div|span)>([\s\S]*)<\/\1>$/i.exec(s))) s = m[2].replace(BIEN, '');
+    if (coThe(s)) return null;
+    var t = nfc(giaiThucThe(s));
+    // chỉ những ký tự bộ ghi HTML của Canvas escape (& < > và dấu cách cứng) mới gây lỗi; chữ khác giữ text/html như cũ
+    if (!/[&<>]/.test(t) && t.indexOf(NBSP) === -1) return null;
+    return t.replace(/\s+/g, ' ').trim();
+  }
+  // html_mat_text của Canvas: có định dạng thật → text/html, còn lại → text/plain
+  function matTuChon(h) {
+    if (!coMarkup(h)) return matText(h);
+    var t = chiLaChu(h);
+    return t != null ? matText(t) : matHtml(h);
+  }
   function nhanLa(id, mat) { return E('response_label', { ident: String(id) }, [mat]); }
   function outcomes() { return E('outcomes', null, [E('decvar', { maxvalue: '100', minvalue: '0', varname: 'SCORE', vartype: 'Decimal' })]); }
   function fbCond() {
     return E('respcondition', { 'continue': 'Yes' }, [E('conditionvar', null, [E('other')]),
       E('displayfeedback', { feedbacktype: 'Response', linkrefid: 'general_fb' })]);
   }
-  function fbBlock(h) { return E('itemfeedback', { ident: 'general_fb' }, [E('flow_mat', null, [matHtml(h)])]); }
+  // lời giải chỉ có chữ → text/plain (cùng lý do với chiLaChu: neutral_comments hiện qua ERB escape)
+  function fbBlock(h) { return E('itemfeedback', { ident: 'general_fb' }, [E('flow_mat', null, [matTuChon(h)])]); }
   function setDiem() { return T('setvar', { action: 'Set', varname: 'SCORE' }, '100'); }
   function addDiem(p) { return T('setvar', { varname: 'SCORE', action: 'Add' }, p); }
   function veq(resp, v) { return T('varequal', { respident: resp }, String(v)); }
@@ -496,7 +526,21 @@
       if (e.level === 'error') out.issues.push(vanDe('error', e.msg, e.qid != null ? e.qid : q.id, ctx.bankTitle));
     });
     kiemTraAnh(manhHtml(c), ctx.images).forEach(function (e) { iss(e.level, e.msg); });
+    // lưới an toàn: HTML lẽ ra đã làm sạch mà còn mã chạy được → làm sạch lại bằng html.js; thiếu html.js → không xuất
+    // (Canvas làm sạch không trọn: thẻ lạ ở cấp ngoài cùng bị bỏ bọc mà con không được lọc — không được dựa vào Canvas)
+    var nguyHiem = manhHtml(c).some(function (h) { return h != null && RE_NGUY_HIEM.test(String(h)); });
+    var modHtml = nguyHiem ? layModule('html') : null;
+    if (nguyHiem && !(modHtml && typeof modHtml.cleanForCanvas === 'function')) {
+      iss('error', 'nội dung còn mã/thuộc tính nguy hiểm (script, on…=, javascript:) mà chưa nạp html.js để làm sạch');
+    }
     if (out.issues.some(function (e) { return e.level === 'error'; })) { out.skip = true; return out; }
+    // đề chỉ nằm trong đoạn dẫn (câu điền bài đọc) mà chọn không chèn đoạn dẫn → câu trên Canvas trống phần đề
+    if (opts.stimulus === 'none' && rongHtml(c.stem) && q.stimulus && !rongHtml(q.stimulus) && c.type !== 'text' &&
+        !(c.type === 'tf' && Array.isArray(c.statements) && c.statements.length)) {
+      iss('warn', 'nội dung câu chỉ nằm trong đoạn dẫn mà đã chọn "không chèn đoạn dẫn" — trên Canvas câu này không có phần đề; ' +
+        'chọn "chèn vào đầu từng câu" hoặc thêm đoạn dẫn vào bài kiểm tra');
+    }
+    if (nguyHiem) iss('info', 'đã làm sạch lại HTML còn mã/thuộc tính nguy hiểm (script, on…=, javascript:) trước khi xuất');
 
     // 3. dựng
     var NN = idx + 1, base = NN * 100, ident = ctx.bankIdent + '_q' + pad2(NN);
@@ -504,6 +548,7 @@
     var demCT = { ok: 0, loi: 0 };
     function cuoi(h) {
       h = h == null ? '' : nfc(String(h));
+      if (nguyHiem && RE_NGUY_HIEM.test(h)) h = modHtml.cleanForCanvas(h, {}).html;
       if (opts.math === 'image') h = congThucThanhAnh(h, demCT);
       return doiTenAnh(h, ctx);
     }

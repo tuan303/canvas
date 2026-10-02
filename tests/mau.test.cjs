@@ -209,7 +209,10 @@ test('docx: gói OPC hợp lệ (content types, rels, XML), A4 lề 2 cm, kiểu
   assert.strictEqual(thuocTinh(core.find(core.find(st, 'w:docDefaults'), 'w:rFonts'), 'w:ascii'), 'Times New Roman');
   const ft = core.parseXml(chu(f['word/fontTable.xml']));
   const bvp = tatCa(ft, 'w:font').find((n) => thuocTinh(n, 'w:name') === 'Be Vietnam Pro');
-  assert.strictEqual(thuocTinh(core.find(bvp, 'w:altName'), 'w:val'), 'Times New Roman');
+  // máy không có Be Vietnam Pro: Word thay bằng altName (đã kiểm bằng Word 365) — Arial không chân, có trên Windows lẫn Mac
+  assert.strictEqual(thuocTinh(core.find(bvp, 'w:altName'), 'w:val'), 'Arial');
+  assert.strictEqual(thuocTinh(core.find(bvp, 'w:family'), 'w:val'), 'swiss');
+  assert.ok(tatCa(ft, 'w:font').some((n) => thuocTinh(n, 'w:name') === 'Arial'), 'fontTable thiếu Arial');
   // không có kiểu đoạn nào tô đỏ / gạch chân / tô nền chữ (sẽ bị hiểu nhầm là đánh dấu đáp án)
   tatCa(st, 'w:style').filter((s) => !/^(Subtitle|Heading)/.test(thuocTinh(s, 'w:styleId'))).forEach((s) => {
     const rp = core.find(s, 'w:rPr');
@@ -338,6 +341,40 @@ test('docx → parseDocx: đúng 11 + 5 câu, đúng loại/đáp án/điểm/m�
   assert.deepStrictEqual(t.map((q) => q.meta.part.replace(/\..*/, '')), ['PHẦN I', 'PHẦN I', 'PHẦN I', 'PHẦN I', 'PHẦN I', 'PHẦN I', 'PHẦN I', 'PHẦN II', 'PHẦN III', 'PHẦN III', 'PHẦN IV']);
 });
 
+test('Word thật điền mẫu (tests/fixtures/docx/office-giao-vien.docx): hai ngân hàng ví dụ vẫn đúng; ngân hàng gõ thêm bằng Word đọc đúng mọi câu', async () => {
+  // tạo bằng tests/fixtures/xlsx/dien-mau-bang-office.ps1: Word 365 mở mẫu, gõ thêm một ngân hàng — công thức gõ tuyến tính rồi
+  // OMaths.BuildUp (như Alt + =), ảnh InlineShapes.AddPicture có Alt Text, gạch chân nhãn đáp án, phương án Word tự đánh số,
+  // bảng 2×2 tô nền nhãn, công thức khối riêng dòng — rồi Word tự lưu (SaveAs2 .docx)
+  const u8 = fs.readFileSync(path.join(GOC, 'tests', 'fixtures', 'docx', 'office-giao-vien.docx'));
+  const z = await zip.readZip(u8);
+  assert.match(chu(z['docProps/app.xml']), /<Application>Microsoft Office Word<\/Application>/);
+  const sDoc = chu(z['word/document.xml']);
+  ['<m:oMathPara>', '<m:rad>', '<w:numPr>', '<w:highlight w:val="yellow"/>', '<w:u w:val="single"/>', 'descr="Đồ thị li độ theo thời gian"']
+    .forEach((k) => assert.ok(sDoc.includes(k), 'Word không ghi ' + k));
+  const kq = await docx.parseDocx(u8, { fileName: 'office-giao-vien.docx' });
+  assert.deepStrictEqual(kq.issues, []);
+  soKyVong(kq.banks.slice(0, 2), KV_DOCX, 'docx');
+  const b = kq.banks[2], q = b.questions;
+  assert.deepStrictEqual([b.title, b.warnings, Object.keys(b.images)], ['Vật lí 10 – Chuyển động (thử)', [], ['img_001.png']]);
+  q.forEach((c) => assert.deepStrictEqual(c.issues, [], c.title));
+  assert.deepStrictEqual(q.map((c) => [c.title, c.type, c.points]), [['Câu 1 [NB]', 'mc', 0.5], ['Câu 2 [TH]', 'mc', 0.5], ['Câu 3 [TH]', 'tf', 1],
+    ['Câu 4 [VD]', 'num', 0.5], ['Câu 5 [NB]', 'mc', 0.5], ['Câu 6 [TH]', 'short', 0.5]]);
+  // Câu 1: đáp án = nhãn A gạch chân; công thức BuildUp → MathML (căn của phân số)
+  assert.deepStrictEqual(q[0].choices.map((c) => c.correct), [true, false, false, false]);
+  assert.match(q[0].stem, /<mi>t<\/mi><mo>=<\/mo><msqrt><mfrac><mrow><mn>2<\/mn><mi>h<\/mi><\/mrow><mi>g<\/mi><\/mfrac><\/msqrt>/);
+  assert.match(q[0].choices[0].html, /^<math [^>]*><mi>v<\/mi><mo>=<\/mo><msqrt><mn>2<\/mn><mi>g<\/mi><mi>h<\/mi><\/msqrt><\/math>$/);
+  assert.match(q[0].feedback, /<msup><mi>v<\/mi><mn>2<\/mn><\/msup>/);
+  // Câu 2: ảnh cùng dòng có Alt Text; phương án do Word tự đánh số A. B. C. D.
+  assert.match(q[1].stem, /<img src="images\/img_001\.png" alt="Đồ thị li độ theo thời gian" style="max-width:100%;height:auto" width="240">/);
+  assert.deepStrictEqual(q[1].choices.map((c) => (c.correct ? '*' : '') + c.id + '. ' + c.html), ['A. 1 lần', '*B. 2 lần', 'C. 3 lần', 'D. Không lần nào']);
+  assert.deepStrictEqual(q[2].statements.map((s) => s.key + ':' + s.value), ['a:true', 'b:false', 'c:true']);
+  assert.deepStrictEqual(q[3].numeric, { exact: 2, margin: 0 });
+  assert.match(q[3].feedback, /^<p><math [^>]*display="block">/);
+  // Câu 5: phương án trong bảng 2×2, nhãn B tô nền
+  assert.deepStrictEqual(q[4].choices.map((c) => (c.correct ? '*' : '') + c.html), ['m/s', '*m/s²', 'km/h', 'm']);
+  assert.deepStrictEqual(q[5].answers, ['20']);
+});
+
 /* ======================= .xlsx ======================= */
 
 test('xlsx: gói OPC hợp lệ; trang "Câu hỏi" có tiêu đề cố định, cột rộng, xuống dòng, danh sách thả xuống, ảnh nổi; trang "Hướng dẫn"', async () => {
@@ -390,6 +427,26 @@ test('xlsx: gói OPC hợp lệ; trang "Câu hỏi" có tiêu đề cố định
   const dr = xml(f, 'xl/drawings/drawing1.xml');
   assert.strictEqual(core.xmlText(core.find(core.find(dr, 'xdr:from'), 'xdr:row')), String(mau.ANH_X.row - 1));
   assert.strictEqual(core.xmlText(core.find(core.find(dr, 'xdr:from'), 'xdr:col')), String(mau.ANH_X.col));
+  // ảnh ví dụ "di chuyển và đổi cỡ theo ô" (twoCell) gói trong ô D3: giáo viên xoá các dòng ví dụ thì Excel xoá luôn ảnh
+  // (oneCellAnchor: ảnh trôi lên dòng 2 và bị gán cho câu đầu tiên giáo viên gõ — đã thử bằng Excel 365)
+  const neo = core.find(dr, 'xdr:twoCellAnchor');
+  assert.ok(neo && !core.find(dr, 'xdr:oneCellAnchor'), 'ảnh ví dụ phải neo twoCellAnchor');
+  assert.strictEqual(thuocTinh(neo, 'editAs'), 'twoCell');
+  assert.strictEqual(core.xmlText(core.find(core.find(dr, 'xdr:to'), 'xdr:row')), String(mau.ANH_X.row - 1));
+  assert.strictEqual(core.xmlText(core.find(core.find(dr, 'xdr:to'), 'xdr:col')), String(mau.ANH_X.col));
+  assert.ok(mau.COT[mau.ANH_X.col][1] * 7 + 5 >= mau.ANH_X.w + 12, 'cột Ảnh hẹp hơn ảnh ví dụ');
+  // cột A…H và Đáp án định dạng Văn bản (@): Excel không tự đổi 1/2, 8/3 thành ngày tháng — cả ô ví dụ lẫn dòng giáo viên gõ thêm
+  const xfs = core.children(core.find(st, 'cellXfs')).filter((c) => c.type === 'el');
+  cols.forEach((c, i) => {
+    const xf = xfs[+thuocTinh(c, 'style')], ten = mau.COT[i][0];
+    assert.ok(xf, 'cột ' + ten + ' thiếu kiểu mặc định');
+    assert.strictEqual(thuocTinh(xf, 'numFmtId'), /^([A-H]|Đáp án)$/.test(ten) ? '49' : '0', 'định dạng cột ' + ten);
+    assert.strictEqual(thuocTinh(core.find(xf, 'alignment'), 'wrapText'), '1', 'cột ' + ten + ' phải tự xuống dòng');
+  });
+  tatCa(s1, 'c').forEach((c) => {
+    const m = /^([A-Z]+)(\d+)$/.exec(thuocTinh(c, 'r')), i = m[1].charCodeAt(0) - 65;
+    if (+m[2] > 1) assert.strictEqual(thuocTinh(xfs[+thuocTinh(c, 's')], 'numFmtId'), /^([A-H]|Đáp án)$/.test(mau.COT[i][0]) ? '49' : '0', 'ô ' + m[0]);
+  });
   assert.strictEqual(relsCua(f, 'xl/worksheets/_rels/sheet1.xml.rels').rId1.target, '../drawings/drawing1.xml');
   assert.ok(Buffer.from(f['xl/media/image1.png']).equals(Buffer.from((await ban()).anh)));
   // trang Hướng dẫn: giải thích từng cột và từng loại câu

@@ -4,8 +4,12 @@
  *           noSharedStrings }) → Promise<Uint8Array>
  * Ô (o): null = không có ô | 'chuỗi' (chuỗi dùng chung) | số | {s} | {rich:[{t,b,i,u,strike,sup,sub}]} | {inline} | {inlineRich}
  *        {n} | {bool} | {e} | {f, v} (công thức số) | {f, str} (công thức chuỗi) | {f} (chưa tính) | {blank:true}
- *        {img: Uint8Array} (ảnh "Place in cell" — richData) | {wps: Uint8Array} (ảnh WPS =DISPIMG) | {xml: '<c …/>'} (thô)
+ *        {img: Uint8Array, alt?} (ảnh "Place in cell" — richData; alt → khoá Text) | {wps: Uint8Array} (ảnh WPS =DISPIMG) | {xml: '<c …/>'} (thô)
+ *        {n, st: k} (số dùng kiểu ô thứ k: 1 = spec.xfs[0]…)
  * Neo ảnh nổi: { row, col (từ 0), data, descr (văn bản thay thế), kind: 'two'|'one', cx, alt: true (bọc mc:AlternateContent Choice+Fallback), media: tên dùng chung }
+ *   hoặc đối tượng không phải ảnh: { row, col, hinh: 'textbox'|'equation'|'chart'|'line', text }
+ * Dòng: [số dòng, [ô…], {hidden: true}?]
+ * spec.xfs: [numFmtId…] (kiểu ô thêm sau kiểu 0), spec.numFmts: { id: 'mã định dạng' }, spec.date1904: true
  */
 'use strict';
 const zlib = require('zlib');
@@ -56,6 +60,29 @@ function runXml(r, p) {
   return '<' + p + 'r><' + p + 'rPr>' + pr.join('') + '</' + p + 'rPr><' + p + 't xml:space="preserve">' + esc(r.t) + '</' + p + 't></' + p + 'r>';
 }
 
+// neo hai ô chứa đối tượng không phải ảnh — dạng Excel ghi cho Text Box, Equation, biểu đồ, đường kẻ
+function neoHinh(im, k) {
+  const from = '<xdr:from><xdr:col>' + im.col + '</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>' + im.row + '</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>' +
+    '<xdr:to><xdr:col>' + (im.col + 2) + '</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>' + (im.row + 1) + '</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>';
+  const nv = (t) => '<xdr:nvSpPr><xdr:cNvPr id="' + (k + 2) + '" name="' + t + ' ' + (k + 1) + '"/><xdr:cNvSpPr txBox="1"/></xdr:nvSpPr>';
+  const spPr = '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1778000" cy="228600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>';
+  const sp = (inner) => '<xdr:sp macro="" textlink="">' + nv('TextBox') + spPr + '<xdr:txBody><a:bodyPr/><a:lstStyle/><a:p>' + inner + '</a:p></xdr:txBody></xdr:sp>';
+  const chu = '<a:r><a:t>' + esc(im.text || '') + '</a:t></a:r>';
+  let body;
+  if (im.hinh === 'textbox') body = sp(chu);
+  else if (im.hinh === 'equation') {
+    // Insert → Equation của Excel: hộp văn bản chứa a14:m/m:oMathPara (Choice) + chữ thường (Fallback)
+    body = '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">' +
+      sp('<a14:m><m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:oMath><m:r><m:t>' + esc(im.text || 'x') + '</m:t></m:r></m:oMath></m:oMathPara></a14:m>') +
+      '</mc:Choice><mc:Fallback>' + sp(chu) + '</mc:Fallback></mc:AlternateContent>';
+  } else if (im.hinh === 'chart') {
+    body = '<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="' + (k + 2) + '" name="Chart ' + (k + 1) + '"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>' +
+      '<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">' +
+      '<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="' + NS_R + '" r:id="rIdKhongCo"/></a:graphicData></a:graphic></xdr:graphicFrame>';
+  } else body = '<xdr:cxnSp macro=""><xdr:nvCxnSpPr><xdr:cNvPr id="' + (k + 2) + '" name="Line ' + (k + 1) + '"/><xdr:cNvCxnSpPr/></xdr:nvCxnSpPr>' + spPr + '</xdr:cxnSp>';
+  return '<xdr:twoCellAnchor>' + from + body + '<xdr:clientData/></xdr:twoCellAnchor>';
+}
+
 async function taoXlsx(spec) {
   const files = [];
   const them = (path, data) => files.push({ path, data });
@@ -73,6 +100,7 @@ async function taoXlsx(spec) {
     return name;
   }
   const inCell = [];  // tên media cho ảnh trong ô (theo thứ tự vm)
+  const inCellAlt = [];  // văn bản thay thế (khoá Text) tương ứng
   const wps = [];     // {id, media}
 
   const sheetsOut = [];
@@ -81,7 +109,7 @@ async function taoXlsx(spec) {
     const rowsXml = [];
     const ds = (sh.rows || []).slice().sort((a, b) => a[0] - b[0]);
     let rTruoc = 0;
-    ds.forEach(([r, cells]) => {
+    ds.forEach(([r, cells, thuoc]) => {
       if (sh.noRefs) while (rTruoc + 1 < r) { rowsXml.push('<' + p + 'row/>'); rTruoc++; }
       rTruoc = r;
       const cx = [];
@@ -99,7 +127,7 @@ async function taoXlsx(spec) {
         if (o.bool != null) { cx.push('<' + p + 'c' + ref + ' t="b"><' + p + 'v>' + (o.bool ? 1 : 0) + '</' + p + 'v></' + p + 'c>'); return; }
         if (o.e) { cx.push('<' + p + 'c' + ref + ' t="e">' + (o.f ? '<' + p + 'f>' + esc(o.f) + '</' + p + 'f>' : '') + '<' + p + 'v>' + esc(o.e) + '</' + p + 'v></' + p + 'c>'); return; }
         if (o.img) {
-          inCell.push(themMedia(o.img));
+          inCell.push(themMedia(o.img)); inCellAlt.push(o.alt);
           cx.push('<' + p + 'c' + ref + ' t="e" vm="' + inCell.length + '"><' + p + 'v>#VALUE!</' + p + 'v></' + p + 'c>');
           return;
         }
@@ -111,10 +139,10 @@ async function taoXlsx(spec) {
         }
         if (o.f != null && o.str != null) { cx.push('<' + p + 'c' + ref + ' t="str"><' + p + 'f>' + esc(o.f) + '</' + p + 'f><' + p + 'v>' + esc(o.str) + '</' + p + 'v></' + p + 'c>'); return; }
         if (o.f != null) { cx.push('<' + p + 'c' + ref + '><' + p + 'f>' + esc(o.f) + '</' + p + 'f>' + (o.v != null ? '<' + p + 'v>' + esc(o.v) + '</' + p + 'v>' : '') + '</' + p + 'c>'); return; }
-        if (o.n != null) { cx.push('<' + p + 'c' + ref + '><' + p + 'v>' + (o.raw != null ? o.raw : String(o.n)) + '</' + p + 'v></' + p + 'c>'); return; }
+        if (o.n != null) { cx.push('<' + p + 'c' + ref + (o.st ? ' s="' + o.st + '"' : '') + '><' + p + 'v>' + (o.raw != null ? o.raw : String(o.n)) + '</' + p + 'v></' + p + 'c>'); return; }
         throw new Error('Ô không rõ kiểu: ' + JSON.stringify(o));
       });
-      rowsXml.push('<' + p + 'row' + (sh.noRefs ? '' : ' r="' + r + '"') + '>' + cx.join('') + '</' + p + 'row>');
+      rowsXml.push('<' + p + 'row' + (sh.noRefs ? '' : ' r="' + r + '"') + (thuoc && thuoc.hidden ? ' hidden="1"' : '') + '>' + cx.join('') + '</' + p + 'row>');
     });
     const n = si + 1;
     let tail = '';
@@ -126,6 +154,7 @@ async function taoXlsx(spec) {
       const drRels = [], anchors = [];
       sh.images.forEach((im, k) => {
         const rid = 'rId' + (k + 1);
+        if (im.hinh) { anchors.push(neoHinh(im, k)); return; }
         drRels.push('<Relationship Id="' + rid + '" Type="' + RT + 'image" Target="../media/' + themMedia(im.data, im.media) + '"/>');
         const cxv = im.cx || 952500;
         const pic = '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="' + (k + 2) + '" name="Picture ' + (k + 1) + '"' + (im.descr != null ? ' descr="' + esc(im.descr) + '"' : '') + '/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>' +
@@ -153,11 +182,14 @@ async function taoXlsx(spec) {
   let k = sheetsOut.length;
   wbRels.push('<Relationship Id="rId' + (++k) + '" Type="' + RT + 'styles" Target="styles.xml"/>');
   ct.push('<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>');
-  them('xl/styles.xml', DECL + '<styleSheet xmlns="' + NS_MAIN + '"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
+  const nf = Object.keys(spec.numFmts || {});
+  them('xl/styles.xml', DECL + '<styleSheet xmlns="' + NS_MAIN + '">' +
+    (nf.length ? '<numFmts count="' + nf.length + '">' + nf.map(id => '<numFmt numFmtId="' + id + '" formatCode="' + esc(spec.numFmts[id]) + '"/>').join('') + '</numFmts>' : '') + '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
     '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
     '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>');
+    '<cellXfs count="' + (1 + (spec.xfs || []).length) + '"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    (spec.xfs || []).map(id => '<xf numFmtId="' + id + '" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>').join('') + '</cellXfs></styleSheet>');
   if (sst.length) {
     wbRels.push('<Relationship Id="rId' + (++k) + '" Type="' + RT + 'sharedStrings" Target="sharedStrings.xml"/>');
     ct.push('<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>');
@@ -182,8 +214,11 @@ async function taoXlsx(spec) {
       '<futureMetadata name="XLRICHVALUE" count="' + inCell.length + '">' + inCell.map((_, i) => '<bk><extLst><ext uri="{3e2802c4-a4d2-4d8b-9148-e3be6c30e623}"><xlrd:rvb i="' + i + '"/></ext></extLst></bk>').join('') + '</futureMetadata>' +
       '<cellMetadata count="1"><bk><rc t="1" v="0"/></bk></cellMetadata>' +
       '<valueMetadata count="' + inCell.length + '">' + inCell.map((_, i) => '<bk><rc t="2" v="' + i + '"/></bk>').join('') + '</valueMetadata></metadata>');
-    them('xl/richData/rdrichvalue.xml', DECL + '<rvData xmlns="' + XLRD + '" count="' + inCell.length + '">' + inCell.map((_, i) => '<rv s="0"><v>' + i + '</v><v>5</v></rv>').join('') + '</rvData>');
-    them('xl/richData/rdrichvaluestructure.xml', DECL + '<rvStructures xmlns="' + XLRD + '" count="1"><s t="_localImage"><k n="_rvRel:LocalImageIdentifier" t="i"/><k n="CalcOrigin" t="i"/></s></rvStructures>');
+    const coAlt = inCellAlt.some(a => a != null);   // như Excel 365: thêm khoá Text (văn bản thay thế) — chỉ khi có, để fixture cũ giữ nguyên byte
+    them('xl/richData/rdrichvalue.xml', DECL + '<rvData xmlns="' + XLRD + '" count="' + inCell.length + '">' +
+      inCell.map((_, i) => '<rv s="0"><v>' + i + '</v><v>5</v>' + (coAlt ? '<v>' + esc(inCellAlt[i] || '') + '</v>' : '') + '</rv>').join('') + '</rvData>');
+    them('xl/richData/rdrichvaluestructure.xml', DECL + '<rvStructures xmlns="' + XLRD + '" count="1"><s t="_localImage"><k n="_rvRel:LocalImageIdentifier" t="i"/><k n="CalcOrigin" t="i"/>' +
+      (coAlt ? '<k n="Text" t="s"/>' : '') + '</s></rvStructures>');
     them('xl/richData/richValueRel.xml', DECL + '<richValueRels xmlns="http://schemas.microsoft.com/office/spreadsheetml/2022/richvaluerel" xmlns:r="' + NS_R + '">' + inCell.map((_, i) => '<rel r:id="rId' + (i + 1) + '"/>').join('') + '</richValueRels>');
     them('xl/richData/_rels/richValueRel.xml.rels', DECL + '<Relationships xmlns="' + NS_PR + '">' + inCell.map((m, i) => '<Relationship Id="rId' + (i + 1) + '" Type="' + RT + 'image" Target="../media/' + m + '"/>').join('') + '</Relationships>');
   }
@@ -201,7 +236,7 @@ async function taoXlsx(spec) {
   media.forEach(m => them('xl/media/' + m.name, m.data));
   if (media.some(m => /\.emf$/.test(m.name))) ct.unshift('<Default Extension="emf" ContentType="image/x-emf"/>');
 
-  them('xl/workbook.xml', DECL + '<workbook xmlns="' + NS_MAIN + '" xmlns:r="' + NS_R + '"><bookViews><workbookView/></bookViews><sheets>' +
+  them('xl/workbook.xml', DECL + '<workbook xmlns="' + NS_MAIN + '" xmlns:r="' + NS_R + '">' + (spec.date1904 ? '<workbookPr date1904="1"/>' : '') + '<bookViews><workbookView/></bookViews><sheets>' +
     sheetsOut.map(s => '<sheet name="' + esc(s.name) + '" sheetId="' + s.n + '"' + (s.hidden ? ' state="hidden"' : '') + ' r:id="rId' + s.n + '"/>').join('') + '</sheets></workbook>');
   them('xl/_rels/workbook.xml.rels', DECL + '<Relationships xmlns="' + NS_PR + '">' + wbRels.join('') + '</Relationships>');
   them('_rels/.rels', DECL + '<Relationships xmlns="' + NS_PR + '"><Relationship Id="rId1" Type="' + RT + 'officeDocument" Target="xl/workbook.xml"/></Relationships>');

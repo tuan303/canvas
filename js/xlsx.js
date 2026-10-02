@@ -129,6 +129,90 @@
     return String(parseFloat(n.toPrecision(15)));
   }
 
+  /* ===================== Định dạng số (styles.xml): ngày tháng, %, phân số ===================== */
+
+  // Excel lưu số + mã định dạng: gõ "1/2" vào ô General → số 46024 định dạng ngày "d-mmm"; "25%" → 0.25 định dạng "0%";
+  // ô định dạng Phân số gõ 1/2 → 0.5 "# ?/?". Phải đọc định dạng mới hiện đúng (và bắt lỗi ngày tháng ngoài ý muốn).
+  // id dựng sẵn → loại (ECMA-376 §18.8.30; 27–36, 50–58 là ngày tháng kiểu Đông Á)
+  function phanLoaiDinhDang(id, ma) {
+    if (id === 9 || id === 10) return { kieu: 'phantram', le: id === 10 ? 2 : 0 };
+    if (id === 12 || id === 13) return { kieu: 'phanso', mauMax: id === 12 ? 9 : 99 };
+    if (id === 16) return { kieu: 'ngay', coNam: false };
+    if (id === 14 || id === 15 || id === 17 || (id >= 27 && id <= 36) || (id >= 50 && id <= 58)) return { kieu: 'ngay', coNam: true };
+    if ((id >= 18 && id <= 21) || (id >= 45 && id <= 47)) return { kieu: 'gio', giay: id === 19 || id === 21 || id >= 45, troi: id === 46 };
+    if (id === 22) return { kieu: 'ngaygio', coNam: true };
+    if (ma == null || id < 164) return null;
+    return phanTichMa(ma);
+  }
+  // mã tự đặt: bỏ chuỗi "…", ký tự thoát \x _x *x và [màu]/[$-vùng] trước khi tìm d m y h s % ?/?
+  function phanTichMa(ma) {
+    var s = String(ma).split(';')[0];
+    var troi = /\[(h+|m+|s+)\]/i.test(s);
+    s = s.replace(/"[^"]*"/g, '').replace(/\\./g, '').replace(/[_*]./g, '').replace(/\[[^\]]*\]/g, '').trim();
+    if (!s || /^(general|@)$/i.test(s)) return null;
+    var soChu = /[0#?]/.test(s);
+    if (!troi && (/[yd]/i.test(s) || (/m/i.test(s) && !/[hs]/i.test(s) && !soChu))) {
+      return { kieu: /[hs]/i.test(s) ? 'ngaygio' : 'ngay', coNam: /y/i.test(s), ma: s };
+    }
+    if (troi || /[hs]/i.test(s)) return { kieu: 'gio', giay: /s/i.test(s), troi: troi };
+    if (/%/.test(s)) { var t = /\.(0+)/.exec(s); return { kieu: 'phantram', le: t ? t[1].length : 0 }; }
+    var ps = /[?#0]+\s*\/\s*([?#0]+|\d+)/.exec(s);
+    if (ps) return /^\d+$/.test(ps[1]) ? { kieu: 'phanso', mauCoDinh: parseInt(ps[1], 10) } : { kieu: 'phanso', mauMax: Math.pow(10, ps[1].length) - 1 };
+    return null;
+  }
+  function hai(n) { return (n < 10 ? '0' : '') + n; }
+  // số ngày Excel → {y, m, d, h, p, g} (hệ 1900 có ngày 29/02/1900 giả; hệ 1904)
+  function ngayTuSo(v, he1904) {
+    var ngay = Math.floor(v + 1e-9), giay = Math.round((v - ngay) * 86400);
+    if (giay >= 86400) { ngay++; giay -= 86400; }
+    var goc;
+    if (he1904) goc = Date.UTC(1904, 0, 1);
+    else { if (ngay < 60) ngay += 1; goc = Date.UTC(1899, 11, 30); }
+    var t = new Date(goc + ngay * 864e5);
+    return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate(), h: Math.floor(giay / 3600), p: Math.floor(giay % 3600 / 60), g: giay % 60 };
+  }
+  // ngày theo mã đơn giản (dd/mm/yyyy, d-m-yy, m/d/yyyy…) — mã khác: dd/mm/yyyy (thói quen Việt Nam) hoặc dd/mm khi không có năm
+  function chuNgay(t, dd) {
+    var m = dd.ma ? /^(d{1,2}|m{1,2}|y{2,4})([\/.\-])(d{1,2}|m{1,2}|y{2,4})(?:\2(d{1,2}|m{1,2}|y{2,4}))?$/i.exec(dd.ma.replace(/\s+/g, '')) : null;
+    if (m) {
+      return [m[1], m[3], m[4]].filter(Boolean).map(function (k) {
+        var c = k.charAt(0).toLowerCase();
+        if (c === 'y') return k.length > 2 ? String(t.y) : hai(t.y % 100);
+        var so = c === 'd' ? t.d : t.m;
+        return k.length > 1 ? hai(so) : String(so);
+      }).join(m[2]);
+    }
+    return hai(t.d) + '/' + hai(t.m) + (dd.coNam ? '/' + t.y : '');
+  }
+  function phanSo(v, dd) {
+    var am = v < 0, x = Math.abs(v), nguyen = Math.floor(x), du = x - nguyen, tu = 0, mau = 1;
+    if (dd.mauCoDinh) { mau = dd.mauCoDinh; tu = Math.round(du * mau); }
+    else {
+      var tot = Infinity;
+      for (var q = 1; q <= dd.mauMax; q++) { var p = Math.round(du * q), e = Math.abs(du - p / q); if (e < tot - 1e-12) { tot = e; tu = p; mau = q; } }
+    }
+    if (tu === mau) { nguyen++; tu = 0; }
+    return (am && (nguyen || tu) ? '-' : '') + (tu ? (nguyen ? nguyen + ' ' : '') + tu + '/' + mau : String(nguyen));
+  }
+  // số + định dạng → chữ hiện như Excel (gần đúng); null = để nguyên
+  function hienSo(v, dd, he1904) {
+    if (!dd || !isFinite(v)) return null;
+    if (dd.kieu === 'phantram') return soSangChu((v * 100).toFixed(dd.le)) + '%';
+    if (dd.kieu === 'phanso') return phanSo(v, dd);
+    if (v < 0 || v >= 2958466) return null;              // ngoài khoảng ngày Excel → Excel hiện ####
+    if (dd.troi) { var tg = Math.round(v * 86400); return Math.floor(tg / 3600) + ':' + hai(Math.floor(tg % 3600 / 60)) + (dd.giay ? ':' + hai(tg % 60) : ''); } // [h]:mm thời gian trôi
+    var t = ngayTuSo(v, he1904), gio = t.h + ':' + hai(t.p);
+    if (dd.kieu === 'gio') return gio + (dd.giay ? ':' + hai(t.g) : '');
+    return chuNgay(t, dd) + (dd.kieu === 'ngaygio' ? ' ' + gio : '');
+  }
+  function docKieuSo(kho, wbRels, wbPath) {
+    var x = kho.xml(relTheoLoai(wbRels, '/styles') || thuMuc(wbPath) + 'styles.xml');
+    if (!x) return [];
+    var ma = {}, nf = tim(x, 'numFmts'), cx = tim(x, 'cellXfs');
+    if (nf) con(nf, 'numFmt').forEach(function (n) { ma[tt(n, 'numFmtId')] = tt(n, 'formatCode'); });
+    return cx ? con(cx, 'xf').map(function (xf) { var id = parseInt(tt(xf, 'numFmtId'), 10) || 0; return phanLoaiDinhDang(id, ma[id]); }) : [];
+  }
+
   function cotSo(chu) { var n = 0; chu = chu.toUpperCase(); for (var i = 0; i < chu.length; i++) n = n * 26 + chu.charCodeAt(i) - 64; return n - 1; }
   function cotChu(n) { var s = ''; n++; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
   function docRef(ref) {
@@ -173,13 +257,19 @@
       if (!g || tenLoai[g.t - 1] !== 'XLRICHVALUE') return null;
       var rv = rvs[tuongLai[g.v]];
       if (!rv) return null;
-      var ct = cauTruc[rv.s], vt = 0;
+      var ct = cauTruc[rv.s], vt = 0, vtChu = -1;
       if (ct) {
         vt = ct.k.indexOf('_rvRel:LocalImageIdentifier');
         if (vt < 0) return null; // giá trị đặc biệt khác (cổ phiếu, địa lý…) không phải ảnh
+        vtChu = ct.k.indexOf('Text');
       }
       var rid = relIds[parseInt(rv.v[vt], 10)], rel = rid && rels[rid];
-      return rel && rel.target ? { path: rel.target, nguon: 'ảnh đặt trong ô' } : null;
+      if (!rel || !rel.target) return null;
+      var o = { path: rel.target, nguon: 'ảnh đặt trong ô' };
+      // "Văn bản thay thế" của ảnh trong ô (khoá Text); Excel mặc định ghi đường dẫn tệp gốc → không dùng làm alt
+      var alt = vtChu >= 0 && rv.v[vtChu] ? core.nfc(rv.v[vtChu]).replace(/\s+/g, ' ').trim() : '';
+      if (alt && !/[\\\/]/.test(alt) && !/^\S+\.(png|jpe?g|gif|bmp|tiff?|webp|emf|wmf|svg|heic)$/i.test(alt)) o.alt = alt.slice(0, 300);
+      return o;
     };
   }
 
@@ -236,6 +326,13 @@
     } else if (v != null && v.trim() !== '') {
       o.num = Number(v);
       o.runs = [{ text: soSangChu(v) }];
+      var dd = ctx.kieuSo ? ctx.kieuSo[parseInt(tt(cEl, 's'), 10) || 0] : null, hien = hienSo(o.num, dd, ctx.he1904);
+      if (hien != null) {
+        o.runs = [{ text: hien }];
+        o.dinhDang = dd.kieu;
+        if (dd.kieu === 'ngay' || dd.kieu === 'ngaygio') o.ngay = { coNam: dd.coNam };
+        if (dd.kieu !== 'phanso') o.num = null;            // 25% / ngày tháng: không dùng giá trị thô làm đáp án số
+      }
     }
     if (fEl && v == null && t !== 'inlineStr') o.chuaTinh = true;
     o.text = o.runs.map(function (r) { return r.text; }).join('');
@@ -243,13 +340,14 @@
   }
 
   function docTrangTinh(x, ctx) {
-    var rows = {}, so = [], rTruoc = 0;
+    var rows = {}, so = [], rTruoc = 0, an = {};
     var sd = tim(x, 'sheetData');
     con(sd, 'row').forEach(function (rowEl) {
       var r = parseInt(tt(rowEl, 'r'), 10);
       if (!(r > 0)) r = rTruoc + 1;
       rTruoc = r;
       if (!rows[r]) { rows[r] = {}; so.push(r); }
+      if (/^(1|true)$/i.test(tt(rowEl, 'hidden') || '')) an[r] = true;   // dòng ẩn (kể cả bị Lọc giấu)
       var hang = rows[r], cTruoc = -1;
       con(rowEl, 'c').forEach(function (cEl) {
         var ref = docRef(tt(cEl, 'r'));
@@ -267,7 +365,7 @@
       if (a && b) gop.push({ r1: Math.min(a.r, b.r), c1: Math.min(a.c, b.c), r2: Math.max(a.r, b.r), c2: Math.max(a.c, b.c) });
     });
     var dr = con1(x, 'drawing');
-    return { rows: rows, so: so, gop: gop, drawingRid: dr ? tt(dr, 'id') : null };
+    return { rows: rows, so: so, gop: gop, an: an, drawingRid: dr ? tt(dr, 'id') : null };
   }
 
   // Ảnh nổi: xl/drawings/drawingN.xml, neo xdr:from (hàng/cột tính từ 0)
@@ -283,7 +381,14 @@
       var hang = tu ? parseInt(core.xmlText(con1(tu, 'row') || {}), 10) : NaN;
       var cot = tu ? parseInt(core.xmlText(con1(tu, 'col') || {}), 10) : NaN;
       var extNeo = con1(neo, 'ext');
-      layPic(neo).forEach(function (pic) {
+      var pics = layPic(neo);
+      if (!pics.length) {
+        // hộp văn bản, hình vẽ, công thức Equation của Excel, biểu đồ: công cụ không đọc được → báo cho dòng đó
+        var h = hinhKhac(neo);
+        if (h) out.push({ row: isFinite(hang) ? hang + 1 : null, col: isFinite(cot) ? cot : null, hinh: h.loai, chu: h.chu });
+        return;
+      }
+      pics.forEach(function (pic) {
         var blip = tim(pic, 'blip');
         if (!blip) return;
         var o = { row: isFinite(hang) ? hang + 1 : null, col: isFinite(cot) ? cot : null, nguon: 'ảnh nổi' };
@@ -299,6 +404,17 @@
       });
     });
     return out;
+  }
+  // neo không có ảnh: loại đối tượng + chữ bên trong (nếu có) | null (neo rỗng)
+  function hinhKhac(neo) {
+    var chu = '';
+    var tx = tim(neo, 'txBody');
+    if (tx) chu = core.nfc(timHet(tx, 't').map(core.xmlText).join(' ')).replace(/\s+/g, ' ').trim();
+    if (tim(neo, 'oMath') || tim(neo, 'oMathPara')) return { loai: 'công thức (Equation)', chu: '' };
+    var gf = tim(neo, 'graphicFrame');
+    if (gf) { var gd = tim(gf, 'graphicData'), uri = gd ? tt(gd, 'uri') || '' : ''; return { loai: /chart/i.test(uri) ? 'biểu đồ' : /diagram/i.test(uri) ? 'SmartArt' : 'đối tượng', chu: '' }; }
+    if (tim(neo, 'sp') || tim(neo, 'cxnSp') || tim(neo, 'grpSp')) return { loai: chu ? 'hộp văn bản' : 'hình vẽ', chu: chu.slice(0, 60) };
+    return null;
   }
   // các xdr:pic trong một neo (kể cả trong nhóm), bỏ nhánh mc:Fallback để không đếm trùng
   function layPic(node) {
@@ -692,10 +808,13 @@
     }
     var wbRels = docRels(kho, wbPath);
     var ssX = kho.xml(relTheoLoai(wbRels, '/sharedStrings') || thuMuc(wbPath) + 'sharedStrings.xml');
+    var wbPr = tim(wb, 'workbookPr');
     var ctx = {
       ss: ssX ? con(ssX, 'si').map(docChuoi) : [],
       richImg: taoRichImg(kho, wbPath, wbRels),
-      wpsImg: taoWpsImg(kho, wbPath)
+      wpsImg: taoWpsImg(kho, wbPath),
+      kieuSo: docKieuSo(kho, wbRels, wbPath),
+      he1904: !!wbPr && /^(1|true|on)$/i.test(tt(wbPr, 'date1904') || '')
     };
 
     // trang tính đầu tiên có dòng tiêu đề "Nội dung câu hỏi" (trang hiện trước, trang ẩn sau)
@@ -731,6 +850,7 @@
     var traAnh = taoTraAnh(opts.extraImages);
     var colChon = CHU.split('').filter(function (L) { return cot[L] != null; });
     var cotThuocTinh = ['loai', 'diem', 'nganHang', 'mucDo', 'chuDe', 'phan'];
+    var COT_KIEM_NGAY = ['noiDung', 'dapAn', 'diem', 'loiGiai'];
 
     function o(r, c, lan) {
       if (c == null) return null;
@@ -753,13 +873,23 @@
     var recs = [], nganHangHienTai = null, picTheoDong = [];
     sheet.so.forEach(function (r) {
       if (r < batDau) return;
-      var rec = { r: r, chon: {}, pics: [], canhBao: [] };
+      var rec = { r: r, chon: {}, pics: [], canhBao: [], loiO: [] };
       Object.keys(cot).forEach(function (k) {
         var x = o(r, cot[k], cotThuocTinh.indexOf(k) !== -1);
         if (!x) return;
         if (x.chuaTinh) rec.canhBao.push('ô ' + x.ref + ' là công thức chưa có giá trị đã tính — mở file bằng Excel rồi lưu lại');
         if (x.loi && !x.anhLoi) rec.canhBao.push('ô ' + x.ref + ' có lỗi "' + x.loi + '" — coi như ô trống');
         if (x.anhLoi) rec.canhBao.push('ô ' + x.ref + ' có ảnh/giá trị đặc biệt không đọc được — hãy chèn ảnh nổi hoặc ghi tên ảnh ở cột Ảnh');
+        // Excel tự đổi chữ thành ngày tháng: không năm (gõ 1/2, 8/3) → chắc chắn sai ý; có năm → có thể đúng ý nhưng ngày/tháng dễ bị đảo
+        if (x.ngay && (/^[A-H]$/.test(k) || COT_KIEM_NGAY.indexOf(k) !== -1)) {
+          if (!x.ngay.coNam) {
+            rec.loiO.push('ô ' + x.ref + ' bị Excel tự đổi thành ngày tháng (' + x.text + ') — thường do gõ phân số như 1/2, 8/3. ' +
+              'Hãy định dạng ô là Văn bản (Text) rồi gõ lại, hoặc gõ thêm dấu nháy đơn phía trước: \'1/2');
+          } else {
+            rec.canhBao.push('ô ' + x.ref + ' là ngày tháng, công cụ ghi thành ' + x.text + ' — kiểm tra lại ngày/tháng; ' +
+              'nếu không phải ngày tháng hãy định dạng ô là Văn bản (Text) rồi gõ lại');
+          }
+        }
         if (/^[A-H]$/.test(k)) rec.chon[k] = x; else rec[k] = x;
       });
       // ảnh đặt trong ô (mọi cột)
@@ -774,9 +904,10 @@
       if (!coNoiDung && loaiRaw) {
         // dòng chỉ có loại câu + ảnh (câu hỏi toàn bằng hình)
         coNoiDung = Object.keys(hang).some(function (c) { return hang[c].pics.length; }) ||
-          anhNoi.some(function (p) { return p.row === r; });
+          anhNoi.some(function (p) { return p.row === r && !p.hinh; });
       }
       if (!coNoiDung) return;
+      if (sheet.an[r]) rec.canhBao.push('dòng đang bị ẩn (hoặc bị Lọc giấu) trong Excel nhưng vẫn được đọc — không muốn xuất câu này thì xoá dòng hoặc bỏ chọn câu trên công cụ');
       rec.loaiRaw = loaiRaw;
       rec.loaiMa = loai;
       rec.nganHangTen = nganHangHienTai;
@@ -785,15 +916,22 @@
 
     // ---- gán ảnh (nổi + trong ô) cho dòng dữ liệu gần nhất phía trên ----
     anhNoi.concat(picTheoDong).forEach(function (p) {
-      if (p.row == null) { issues.push(core.newIssue('warn', 'Có ảnh nổi không neo theo ô (absoluteAnchor) — bỏ qua; hãy đặt ảnh vào đúng dòng câu hỏi')); return; }
+      if (p.row == null) {
+        if (!p.hinh) issues.push(core.newIssue('warn', 'Có ảnh nổi không neo theo ô (absoluteAnchor) — bỏ qua; hãy đặt ảnh vào đúng dòng câu hỏi'));
+        return;
+      }
       if (p.row <= hangTD) {
-        issues.push(core.newIssue('info', 'Ảnh ở dòng ' + p.row + ' nằm trên/tại dòng tiêu đề — bỏ qua'));
+        if (!p.hinh) issues.push(core.newIssue('info', 'Ảnh ở dòng ' + p.row + ' nằm trên/tại dòng tiêu đề — bỏ qua'));
         return;
       }
       var dich = null;
       for (var i = 0; i < recs.length; i++) { if (recs[i].r <= p.row) dich = recs[i]; else break; }
       if (!dich) dich = recs[0];
-      if (dich) dich.pics.push(p);
+      if (!dich) return;
+      if (p.hinh) {
+        dich.canhBao.push(p.hinh + ' nổi ở ô ' + cotChu(p.col || 0) + p.row + (p.chu ? ' ("' + p.chu + '")' : '') +
+          ' bị bỏ qua — công cụ chỉ đọc chữ trong ô và ảnh; hãy gõ nội dung vào ô (công thức dạng $…$) hoặc chụp thành ảnh PNG');
+      } else dich.pics.push(p);
     });
 
     // ---- dựng ngân hàng + câu hỏi ----
@@ -848,6 +986,7 @@
         var nd = rec.noiDung ? vh(rec.noiDung.runs) : { html: '', plain: '', loi: [] };
         var canh = function (m, lv) { bank.warnings.push(core.newIssue(lv || 'warn', 'Dòng ' + rec.r + ' (đoạn dẫn): ' + m)); };
         rec.canhBao.forEach(function (m) { canh(m); });
+        rec.loiO.forEach(function (m) { canh(m, 'error'); });
         baoLatex(nd.loi, function (m) { canh(m); });
         var imgs = layAnhDong(rec, bank, function (m) { canh(m, 'error'); }).map(function (a) { return a.html; });
         if (/^-*\s*(het|het doan|het doan dan|ket thuc|ket thuc doan dan|end)\s*-*$/.test(chuanTieuDe(nd.plain).trim()) || (!nd.plain && !imgs.length)) doan = '';
@@ -888,6 +1027,7 @@
       var own = [], daBaoDapAn = false;
       function bao(lv, m) { own.push(core.newIssue(lv, 'Dòng ' + rec.r + ': ' + m, id)); }
       function loiDA(m) { daBaoDapAn = true; bao('error', m); }
+      rec.loiO.forEach(function (m) { bao('error', m); });
       rec.canhBao.forEach(function (m) { bao('warn', m); });
 
       // mức độ, chủ đề, điểm
@@ -1157,6 +1297,7 @@
     // nội bộ — để kiểm thử
     _docDS: docDS, _apDS: apDS, _docNhan: docNhan, _docDapAnSo: docDapAnSo, _khopCot: khopCot,
     _traLoai: function (s) { return traMa(LOAI, s); }, _traMuc: function (s) { return traMa(MUC, s); },
-    _veHtml: veHtml, _giaiX: giaiX, _soSangChu: soSangChu, _kieuAnh: kieuAnh
+    _veHtml: veHtml, _giaiX: giaiX, _soSangChu: soSangChu, _kieuAnh: kieuAnh,
+    _phanLoaiDinhDang: phanLoaiDinhDang, _hienSo: hienSo
   };
 });

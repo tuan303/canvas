@@ -247,6 +247,93 @@ test('Đầu-cuối: xlsx mẫu thiếu ảnh → có lỗi; thêm ảnh kèm �
   assert.ok(dem(r2.banks) < truoc);
 });
 
+/* ---------- file đáp án riêng (HDC / KEY) ---------- */
+
+test('chonDeChoKey: tên gốc trùng, gần trùng, một đề duy nhất; mơ hồ → null', () => {
+  const de = (...ten) => ten.map((name, i) => ({ id: 'n' + i, name }));
+  const chon = (k, ds) => { const d = app.chonDeChoKey(k, ds, docx); return d ? d.name : null; };
+  // trùng tên gốc (bỏ HDC / KEY / ĐÁP ÁN…)
+  assert.strictEqual(chon('26.12.HH.KS.HDC.0301.docx', de('25.2.TA.ĐGNL1.01.docx', '26.12.HH.KS.0301.docx')), '26.12.HH.KS.0301.docx');
+  assert.strictEqual(chon('K4_TN_ĐỀ THI THÁNG 1_KEY.docx', de('K4_TN_ĐỀ THI THÁNG 1.docx', 'K5_TN_ĐỀ THI THÁNG 1.docx')), 'K4_TN_ĐỀ THI THÁNG 1.docx');
+  assert.strictEqual(chon('X_KEY.docx', de('Y.docx', 'X.docx')), 'X.docx');
+  assert.strictEqual(chon('25.2.TA.ĐGNL1.01.HDC.docx', de('25.2.TA.ĐGNL1.01.docx', '26.12.HH.KS.0301.xlsx')), '25.2.TA.ĐGNL1.01.docx');
+  // gần trùng (bỏ từ chung "đề", "chưa"…)
+  assert.strictEqual(chon('hdc-thpt.docx', de('de-thpt-chua-dap-an.docx', 'word-tieu-hoc.docx')), 'de-thpt-chua-dap-an.docx');
+  assert.strictEqual(chon('Đáp án Toán 10 HK1.docx', de('Đề kiểm tra Toán 10 HK1.docx', 'Đề kiểm tra Lý 10 HK1.docx')), 'Đề kiểm tra Toán 10 HK1.docx');
+  // mơ hồ: hai đề giống nhau như nhau / chỉ trùng số → giáo viên tự chọn
+  assert.strictEqual(chon('KEY Toán 10.docx', de('Toán 10 đề 1.docx', 'Toán 10 đề 2.docx')), null);
+  assert.strictEqual(chon('KEY_1.docx', de('Toán 1.docx', 'Văn 1.docx')), null);
+  assert.strictEqual(chon('Đáp án.docx', de('A.docx', 'B.docx')), null);
+  // chỉ một file đề → dùng luôn dù tên khác
+  assert.strictEqual(chon('Đáp án.docx', de('De giua ky.docx')), 'De giua ky.docx');
+  // … trừ khi giao diện tắt bước này (file đề tên khác được nạp SAU file đáp án — có thể là đề khác)
+  assert.strictEqual(app.chonDeChoKey('word-thpt-hdc.docx', de('word-tieu-hoc.docx'), docx, false), null);
+  assert.strictEqual(app.chonDeChoKey('word-thpt-hdc.docx', de('word-thpt.docx'), docx, false).name, 'word-thpt.docx', 'trùng tên vẫn ghép');
+  assert.strictEqual(app.chonDeChoKey('a.docx', [], docx), null);
+  assert.strictEqual(app.chonDeChoKey('a.docx', de('a.docx'), null), null);
+});
+
+test('File đáp án → điền vào đề: hết lỗi thiếu đáp án, xuất qua kiem-qti đạt (fixture tổng hợp)', async () => {
+  const cap = [['word-thpt.docx', 'word-thpt-hdc.docx'], ['word-tieng-anh.docx', 'word-tieng-anh-key.docx'],
+    ['word-tieu-hoc.docx', 'word-tieu-hoc-key.docx'], ['de-thpt-chua-dap-an.docx', 'hdc-thpt.docx']];
+  for (const [tenDe, tenKey] of cap) {
+    if (!fs.existsSync(path.join(GOC, 'tests/fixtures/docx', tenDe)) || !fs.existsSync(path.join(GOC, 'tests/fixtures/docx', tenKey))) continue;
+    const rd = await docx.parseDocx(docTep('tests/fixtures/docx/' + tenDe), { fileName: tenDe });
+    const rk = await docx.parseDocx(docTep('tests/fixtures/docx/' + tenKey), { fileName: tenKey });
+    assert.ok(!rd.keyOnly && rd.banks.length, tenDe);
+    assert.ok(rk.keyOnly && rk.key && rk.key.count > 0 && !rk.banks.length, tenKey + ' phải là file chỉ có đáp án');
+    // ghép theo tên giữa đề thật và một đề nhiễu
+    const dsDe = [{ id: 'n1', name: 'de-khac-hoan-toan.docx' }, { id: 'n2', name: tenDe }];
+    assert.strictEqual(app.chonDeChoKey(tenKey, dsDe, docx).id, 'n2', tenKey + ' → ' + tenDe);
+    const mucs = rd.banks.map((b, i) => app.taoMuc('n2-' + i, b));
+    const loiTruoc = mucs.reduce((s, e) => s + e.bank.questions.filter(q => app.coLoi(e, q)).length, 0);
+    assert.ok(loiTruoc > 0, tenDe + ' chưa có đáp án → có câu lỗi');
+    const r = app.apDapAnChoMuc(mucs, rk.key, docx);
+    assert.ok(r.matched > 0 && r.filled > 0, tenKey + ': ' + JSON.stringify(r));
+    mucs.forEach(e => assert.deepStrictEqual(e._vd, {}, 'đệm lỗi đã xoá để soát lại'));
+    const loiSau = mucs.reduce((s, e) => s + e.bank.questions.filter(q => app.coLoi(e, q)).length, 0);
+    assert.ok(loiSau < loiTruoc, tenDe + ': lỗi ' + loiTruoc + ' → ' + loiSau);
+    // áp lần hai: không điền thêm (đã có đáp án → "trùng")
+    const r2 = app.apDapAnChoMuc(mucs, rk.key, docx);
+    assert.strictEqual(r2.filled, 0, 'áp lại không đổi gì');
+    const pk = await qti.buildPackages(app.banksDeXuat(mucs), { target: 'itembank' });
+    assert.ok(pk.length, tenDe);
+    for (const p of pk) {
+      const k = await kiem.checkZip(p.bytes);
+      assert.ok(k.ok, p.fileName + ': ' + k.errors.map(x => x.msg).join('; '));
+    }
+  }
+});
+
+/* ---------- lớp bảo vệ khi hiện HTML ---------- */
+
+test('urlNguyHiem / thuocTinhNguyHiem: javascript: ẩn ký tự, data: lạ, on*, id/name, srcset…', () => {
+  ['javascript:alert(1)', 'java\tscript:alert(1)', '\x01javascript:x', ' JaVaScRiPt:x', 'java\nscript:x', 'vbscript:x',
+    'data:text/html,<script>', 'data:image/svg+xml;base64,PHN2Zz4=', 'd\u0000ata:text/html,x'].forEach(v => assert.ok(app.urlNguyHiem(v), JSON.stringify(v)));
+  ['https://a.b/c.png', 'images/a.png', 'data:image/png;base64,iVBOR', 'data:image/jpeg;base64,/9j/', '#x', 'mailto:a@b.c', ''].forEach(v => assert.ok(!app.urlNguyHiem(v), v));
+  const bo = (n, v) => app.thuocTinhNguyHiem(n, v);
+  assert.ok(bo('onclick', 'x') && bo('ONerror', 'x') && bo('id', 'vung-thong-bao') && bo('name', 'x') && bo('srcset', 'a.png 1x') &&
+    bo('srcdoc', '<p>') && bo('form', 'f') && bo('formaction', 'x') && bo('ping', 'https://x'));
+  assert.ok(bo('href', 'java\tscript:alert(1)') && bo('xlink:href', 'javascript:x') && bo('src', 'data:text/html,x'));
+  assert.ok(bo('style', 'width:expression(alert(1))') && bo('style', 'background:url( "javascript:x")'));
+  assert.ok(!bo('href', 'https://canvas.vn') && !bo('src', 'images/a.png') && !bo('style', 'color:red') && !bo('class', 'x') && !bo('alt', 'Hình 1'));
+  ['script', 'svg', 'animate', 'set', 'foreignobject', 'use', 'iframe', 'base', 'form'].forEach(t => assert.ok(app.THE_CAM[t], t));
+  assert.ok(!app.THE_CAM.math && !app.THE_CAM.img && !app.THE_CAM.table, 'giữ MathML, ảnh, bảng');
+});
+
+test('hostCanvas / linkCanvas: địa chỉ Canvas của trường, trang khoá học', () => {
+  assert.deepStrictEqual(app.hostCanvas('https://4015.instructure.com'), { origin: 'https://4015.instructure.com', host: '4015.instructure.com' });
+  assert.deepStrictEqual(app.hostCanvas('https://4015.instructure.com/'), { origin: 'https://4015.instructure.com', host: '4015.instructure.com' });
+  assert.strictEqual(app.hostCanvas(null), null);
+  assert.strictEqual(app.hostCanvas('javascript:alert(1)'), null);
+  assert.strictEqual(app.linkCanvas('https://4015.instructure.com', '123', 'quizzes'), 'https://4015.instructure.com/courses/123/quizzes');
+  assert.strictEqual(app.linkCanvas('https://4015.instructure.com/', '123', 'content_migrations'), 'https://4015.instructure.com/courses/123/content_migrations');
+  assert.strictEqual(app.linkCanvas('https://4015.instructure.com', '123', 'question_banks'), 'https://4015.instructure.com/courses/123/question_banks');
+  assert.strictEqual(app.linkCanvas('https://4015.instructure.com', '1/../x', 'quizzes'), '');
+  assert.strictEqual(app.linkCanvas('https://4015.instructure.com', '1', 'users'), '');
+  assert.strictEqual(app.linkCanvas('', '1', 'quizzes'), '');
+});
+
 /* ---------- các bước nhập Canvas ---------- */
 
 test('cacBuocNhap: Item Bank (ngân hàng trống, Import Content) và Classic (Ghi đè…, QTI .zip)', () => {
@@ -256,6 +343,10 @@ test('cacBuocNhap: Item Bank (ngân hàng trống, Import Content) và Classic (
   assert.ok(/phải còn trống/.test(ta));
   assert.ok(/Import Content/.test(ta));
   assert.ok(/Ngân Hàng Câu Hỏi/.test(ta) && /cả hai/.test(ta));
+  // đúng trình tự Item Banks → Add Bank → mở ngân hàng TRỐNG → ⋮ Options → Import Content → Import; một zip một ngân hàng; Share
+  const thuTu = ['Item Banks', 'Add Bank', 'Create Bank', 'phải còn trống', 'Options', 'Import Content', 'Import</span>'].map(s => a.buoc.join(' ').indexOf(s));
+  assert.ok(thuTu.every((x, i) => x >= 0 && (i === 0 || x > thuTu[i - 1])), 'trình tự các bước: ' + thuTu);
+  assert.ok(/Một file \.zip = một ngân hàng/.test(ta) && /Share/.test(ta) && /Bản cũ/.test(ta));
   const c = app.cacBuocNhap('classic');
   const tc = c.buoc.concat(c.ghiChu).join(' ');
   assert.ok(/Classic/.test(c.tieuDe));
@@ -322,6 +413,17 @@ test('index.html: radio tuỳ chọn xuất khớp normalizeOptions của qti', 
   });
   assert.strictEqual(md.target, 'itembank');
   assert.ok(/name="includeFeedback"/.test(html));
+});
+
+test('index.html bước 4: chọn Classic / New Quizzes, ghi đè chỉ cho Classic, gợi ý Canvas của trường, CSP tối thiểu', () => {
+  const vals = [...html.matchAll(/name="cv-dich" value="([^"]+)"/g)].map(m => m[1]);
+  assert.deepStrictEqual(vals, ['classic', 'newquiz']);
+  assert.ok(/Chuyển sang New Quizzes khi nhập/.test(html) && /cần thử lần đầu/.test(html));
+  assert.ok(/id="cv-hop-ghi-de"[^>]*><input type="checkbox" id="cv-ghi-de"/.test(html), 'ô Ghi đè nằm trong cv-hop-ghi-de');
+  assert.ok(/id="cv-truong"/.test(html) && /id="cv-ghi-chu-nq"/.test(html));
+  assert.ok(/<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'none'">/.test(html));
+  // app.js gửi đúng tham số cho hai đích
+  assert.ok(/importQuizzesNext: nq/.test(appSrc) && /opts\.target = nq \? 'itembank' : 'classic'/.test(appSrc));
 });
 
 test('huong-dan.html: tồn tại, liên kết # nội bộ đều có đích, có các phần bắt buộc', () => {

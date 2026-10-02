@@ -840,24 +840,403 @@ test('nạp kiểu trình duyệt (self.NH.docx) — đủ phụ thuộc core/zi
   });
 });
 
-test('file Word thật trong Downloads (nếu có): không ném lỗi, nhận MathType/WMF là lỗi', async () => {
-  const DL = 'C:/Users/Administrator/Downloads';
-  const ten = ['26.12.HH.KS.0301.docx', '25.2.TA.ĐGNL1.01.docx', '26.10.IE.ĐG.7.Đ_ĐÁP_ÁN_BÔI_VÀNG.docx', 'file-mau-upload-cau-hoi.docx'];
+/* ======================= 8. đề không theo mẫu: chế độ đánh số "1." (đề tiếng Anh, tiểu học) ======================= */
+
+const U = (t) => R(t, { u: true });
+async function mauSo() {
+  const body = [
+    TBL([['TRƯỜNG MẪU', 'BÀI KIỂM TRA THỬ']]),
+    P('I. Phonetics'),
+    P(R('1. Which word has a different sound? CHOOSE the correct answer.', { b: true })),
+    P('There is one example.', TAB, '(…………/2 points)'),
+    P('0. A. b', U('oo'), 'k', TAB, 'B. l', U('oo'), 'k', TAB, 'C. f', U('oo'), 'd', TAB, 'D. c', U('oo'), 'k'),
+    P('1. A. play', U('ed'), TAB, 'B. watch', U('ed'), TAB, 'C. cook', U('ed'), TAB, 'D. jump', U('ed')),
+    P('2. A. ', U('th'), 'ink', TAB, 'B. ', U('th'), 'is', TAB, 'C. ', U('th'), 'ree', TAB, 'D. ', U('th'), 'ank'),
+    P('II. Vocabulary and grammar'),
+    P('2. Read and choose the correct word from the box.', TAB, '(…/2 points)'),
+    TBL([['river', 'forest', 'desert']]),
+    TBL([['0. A hot, dry place with sand.', '……………'], ['3. A large area full of trees.', '……………'], ['4. Water that flows to the sea.', '……………']]),
+    P('B. GRAMMAR'),
+    P('3. CHOOSE the best answer. (…/1 point)'),
+    P('5. She ……… to school every day.'),
+    P('A. go', TAB, 'B. goes', TAB, 'C. going', TAB, 'D. gone'),
+    P('4. Find the mistakes. (…/1 point)'),
+    P('6. He ', U('don’t'), ' like ', U('apples'), ' ', U('because'), ' they ', U('are'), ' sour.', TAB, '……'),
+    P('          A', TAB, TAB, 'B', TAB, 'C', TAB, 'D'),
+    P('III. Reading'),
+    P('5. Read the text. CHOOSE the correct answer. (…/2 points)'),
+    P('Tom lives near the sea. Every morning he (7) ……… to the beach and (8) ……… for shells.'),
+    P('7. A. walk', TAB, 'B. walks', TAB, 'C. walking', TAB, 'D. walked'),
+    P('8. A. look', TAB, 'B. looks', TAB, 'C. looking', TAB, 'D. looked'),
+    P('6. Read and WRITE the correct LETTERS.'),
+    TBL([['A. on', 'C. under'], ['B. in', 'D. small'], ['9.', 'The book is ___ the bag.'], ['10.', 'My bag is very ___.']]),
+    P('7. Read. CIRCLE the correct answer.'),
+    TBL([[[P('My pet'), P('Her name (11) ____ Kitty.'), TBL([['0.', 'A. small', 'B. smalls'], ['11.', 'A. are', 'B. is']])]]]),
+    P('8. Look and read. CIRCLE YES or NO.'),
+    TBL([['12. Kitty is a cat.', 'A. Yes', 'B. No'], ['13.', '', 'Where is the cat? (under)'], ['', '', 'Answer: ______________']]),
+    P('The end -')
+  ].join('');
+  return docx.parseDocx(await taoDocx('so-tieng-anh.docx', body), { fileName: 'so-tieng-anh.docx' });
+}
+
+test('đề đánh số "1." (không "Câu N"): lời dặn → đoạn dẫn, ví dụ 0 bỏ, phương án cùng dòng, tiêu đề La Mã/“B. GRAMMAR”, tìm lỗi sai, bảng câu hỏi, bảng lồng', async () => {
+  const kq = await mauSo();
+  assert.strictEqual(kq.banks.length, 1);
+  const b = kq.banks[0], qs = b.questions;
+  assert.deepStrictEqual(qs.map((q) => q.no), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'], moTa(kq));
+  assert.deepStrictEqual(qs.map((q) => q.type), ['mc', 'mc', 'essay', 'essay', 'mc', 'mc', 'mc', 'mc', 'mc', 'mc', 'mc', 'mc', 'essay']);
+  assert.ok(b.warnings.some((w) => /Bỏ qua 3 câu ví dụ/.test(w.msg)), JSON.stringify(b.warnings));
+  assert.deepStrictEqual([...new Set(qs.map((q) => q.meta.part))], ['I. Phonetics', 'II. Vocabulary and grammar', 'B. GRAMMAR', 'III. Reading']);
+  // lời dặn của bài là đoạn dẫn chung; gạch chân âm giữ trong phương án (không phải dấu đáp án)
+  assert.ok(/Which word has a different sound/.test(qs[0].stimulus) && /There is one example/.test(qs[0].stimulus), qs[0].stimulus);
+  assert.deepStrictEqual(qs[0].choices.map((c) => c.html), ['play<u>ed</u>', 'watch<u>ed</u>', 'cook<u>ed</u>', 'jump<u>ed</u>']);
+  assert.deepStrictEqual(dung(qs[0]), []);
+  assert.strictEqual(qs[0].stem, '');
+  // bảng câu hỏi: dòng "3. … | ……" → câu viết (chưa có đáp án → tự luận), bảng từ là đoạn dẫn
+  assert.strictEqual(qs[2].stem, '<p>A large area full of trees. ……………</p>');
+  assert.ok(/<table/.test(qs[2].stimulus) && /forest/.test(qs[2].stimulus));
+  assert.deepStrictEqual(qs[4].choices.map((c) => c.html), ['go', 'goes', 'going', 'gone']);
+  // tìm lỗi sai: phương án = các đoạn gạch chân, nội dung giữ gạch chân
+  assert.deepStrictEqual(qs[5].choices.map((c) => [c.id, c.html]), [['A', 'don’t'], ['B', 'apples'], ['C', 'because'], ['D', 'are']]);
+  assert.ok(qs[5].stem.indexOf('<u>don’t</u>') >= 0, qs[5].stem);
+  // đoạn văn điền từ: đoạn dẫn chứa đoạn văn, nội dung câu rỗng
+  assert.ok(/Tom lives near the sea/.test(qs[6].stimulus) && /Tom lives/.test(qs[7].stimulus));
+  // bảng từ A–D (nhãn không theo thứ tự) → phương án chung cho câu chỉ có chỗ trống
+  assert.deepStrictEqual(qs[8].choices.map((c) => [c.id, c.html]), [['A', 'on'], ['B', 'in'], ['C', 'under'], ['D', 'small']]);
+  assert.strictEqual(qs[8].stem, '<p>The book is ___ the bag.</p>');
+  assert.deepStrictEqual(qs[9].choices.map((c) => c.id), ['A', 'B', 'C', 'D']);
+  // bảng bọc chứa đoạn văn + bảng câu hỏi lồng
+  assert.ok(/My pet/.test(qs[10].stimulus) && /Kitty/.test(qs[10].stimulus), qs[10].stimulus);
+  assert.deepStrictEqual(qs[10].choices.map((c) => c.html), ['are', 'is']);
+  assert.deepStrictEqual(qs[11].choices.map((c) => c.html), ['Yes', 'No']);
+  assert.strictEqual(qs[11].stem, '<p>Kitty is a cat.</p>');
+  // "Answer: ____" là chỗ học sinh viết, không phải đáp án
+  assert.ok(/Answer: ______________/.test(qs[12].stem) && !qs[12].answers, qs[12].stem);
+  qs.forEach((q) => assert.ok(!loi(q, 'error').some((i) => !/chưa xác định đáp án/.test(i.msg)), q.title + ': ' + JSON.stringify(q.issues)));
+});
+
+test('file đáp án "Item | Key" (mã năng lực kèm đáp án) → parseAnswerKey, parseDocx trả keyOnly; applyAnswerKey điền mc / chỗ trống → trả lời ngắn / YES', async () => {
+  const body = [
+    TBL([['TRƯỜNG MẪU', 'ĐÁP ÁN']]),
+    P(''),
+    TBL([['Item', 'Key', 'Item', 'Key'], ['1', 'A - 4.0.TA.1.3', '7', 'B'], ['2', 'B - 4.0.TA.1.1', '8', 'B - 4.0.TA.4.124'], ['3', 'Forest - 4.0.TA.2.36', '9', 'A'],
+      ['4', 'River', '10', 'D'], ['5', 'B', '11', 'B'], ['6', 'A', '12', 'YES']]),
+    P('Câu 13:'),
+    P('Mỗi câu đúng: 1 điểm'),
+    P('13. It is under the table.')
+  ].join('');
+  const u8 = await taoDocx('dap-an-item-key.docx', body);
+  const key = await docx.parseAnswerKey(u8, { fileName: 'De_KEY.docx' });
+  assert.strictEqual(key.count, 13);
+  assert.deepStrictEqual(key.answers[''], { 1: 'A', 2: 'B', 3: 'Forest', 4: 'River', 5: 'B', 6: 'A', 7: 'B', 8: 'B', 9: 'A', 10: 'D', 11: 'B', 12: 'YES', 13: 'It is under the table.' });
+  const chi = await docx.parseDocx(u8, { fileName: 'De_KEY.docx' });
+  assert.strictEqual(chi.keyOnly, true);
+  assert.deepStrictEqual(chi.banks, []);
+  assert.ok(chi.issues.some((i) => i.level === 'info' && /file đáp án/.test(i.msg)) && !chi.issues.some((i) => i.level === 'error'));
+  const kq = await mauSo();
+  const r = docx.applyAnswerKey(kq.banks, key);
+  assert.strictEqual(r.matched, 13);
+  assert.strictEqual(r.filled, 13);
+  const qs = kq.banks[0].questions;
+  assert.deepStrictEqual(qs.map((q) => q.choices ? dung(q).join('') : q.type === 'short' ? q.answers[0] : q.type), ['A', 'B', 'Forest', 'River', 'B', 'A', 'B', 'B', 'A', 'D', 'B', 'A', 'essay']);
+  assert.ok(/Đáp án: It is under the table\./.test(qs[12].feedback));
+  qs.forEach((q) => assert.deepStrictEqual(loi(q, 'error').map((i) => i.msg), [], q.title));
+  // parseDocx(…, {answerKey}) áp ngay khi đọc
+  const kq2 = await docx.parseDocx(fs.readFileSync(path.join(THU_MUC_MAU, 'so-tieng-anh.docx')), { fileName: 'x.docx', answerKey: key });
+  assert.ok(kq2.issues.some((i) => i.level === 'info' && /Đã khớp 13 câu với file đáp án: điền 13/.test(i.msg)), JSON.stringify(kq2.issues));
+  kq2.banks[0].questions.forEach((q) => assert.deepStrictEqual(loi(q, 'error').map((i) => i.msg), [], q.title));
+});
+
+async function mauIelts(highlight) {
+  const H = (t) => highlight ? R(t, { hl: 'yellow' }) : R('………');
+  const body = [
+    P(R('READING PASSAGE 1', { b: true })),
+    P('You should spend about 10 minutes on Questions 1-9, which are based on Reading Passage 1 below.'),
+    P('Rooftop Gardens'),
+    P('A. City planners now encourage rooftop gardens because they cool buildings and reduce storm water flowing into drains.'),
+    P('B. A typical green roof holds a thin layer of soil and supports hardy plants such as sedum.'),
+    P('Questions 1-2'),
+    P('Complete the notes below. Choose NO MORE THAN TWO WORDS from the passage for each answer.'),
+    P('Benefits: cool buildings and reduce 1 ', H('storm water')),
+    P('2 ', H('Sedum'), ' is a typical plant.'),
+    P('Questions 3-4'),
+    P('Do the following statements agree with the information given in Reading Passage 1?'),
+    P('TRUE', TAB, 'if the statement agrees with the information'),
+    P('FALSE', TAB, 'if the statement contradicts the information'),
+    P('NOT GIVEN', TAB, 'if there is no information on this'),
+    P('3', TAB, 'Green roofs make buildings warmer.  ', highlight ? R('[FALSE]', { hl: 'yellow' }) : R('')),
+    P('4', TAB, 'The first green roof was built by a school.  ', highlight ? R('[NOT GIVEN]', { hl: 'yellow' }) : R('')),
+    P('Questions 5-6'),
+    P('Choose TWO letters, A–E.'),
+    P('Which TWO advantages are mentioned?'),
+    P('A.  lower noise'), P(highlight ? R('B.  cooler buildings', { hl: 'yellow' }) : R('B.  cooler buildings')), P('C.  cheaper insurance'),
+    P(highlight ? R('D.', { hl: 'yellow' }) : R('D.'), R('  less storm water')), P('E.  more birds'),
+    P('Questions 7-9'),
+    P('Reading Passage 1 has two paragraphs, A–B. Which paragraph contains the following information?'),
+    P('7', TAB, 'a mention of soil  ', highlight ? R('[B]', { hl: 'yellow' }) : R('')),
+    P('8. ', TAB, 'Why do planners like green roofs?'),
+    P(highlight ? R('A', { hl: 'yellow' }) : R('A'), TAB, 'they cool buildings'), P('B', TAB, 'they are cheap'),
+    P('9. ', TAB, 'What holds the plants?'),
+    P('A', TAB, 'trays'), P(highlight ? R('B', { hl: 'yellow' }) : R('B'), TAB, 'a thin layer of soil'),
+    P('— THE END —')
+  ].join('');
+  return docx.parseDocx(await taoDocx(highlight ? 'ielts-boi-vang.docx' : 'ielts-chua-dap-an.docx', body), { fileName: 'ielts.docx' });
+}
+
+test('đề IELTS bôi vàng: nhóm "Questions 1-2" lồng trong đoạn văn, ô trống đánh số, [FALSE] → TRUE/FALSE/NOT GIVEN, chọn HAI chữ cái → một câu 2 điểm, chữ cái đoạn A–B', async () => {
+  const kq = await mauIelts(true);
+  const qs = kq.banks[0].questions;
+  assert.deepStrictEqual(qs.map((q) => q.no), ['1', '2', '3', '4', '5-6', '7', '8', '9'], moTa(kq));
+  assert.deepStrictEqual(qs.map((q) => q.type), ['short', 'short', 'mc', 'mc', 'ma', 'mc', 'mc', 'mc']);
+  assert.deepStrictEqual(qs[0].answers, ['storm water']);
+  assert.strictEqual(qs[0].stem, '<p>Benefits: cool buildings and reduce <strong>(1) ______</strong></p>');
+  assert.deepStrictEqual(qs[1].answers, ['Sedum']);
+  // đoạn dẫn = đoạn văn (nhóm ngoài) + lời dặn của nhóm câu (nhóm trong); câu 2 thấy cả dòng của câu 1 (đã che đáp án)
+  assert.ok(/Rooftop Gardens/.test(qs[0].stimulus) && /Complete the notes/.test(qs[0].stimulus), qs[0].stimulus);
+  assert.ok(/\(1\) ______/.test(qs[1].stimulus) && !/storm water<\/p>/.test(qs[1].stimulus.split('Complete')[1]), qs[1].stimulus);
+  assert.deepStrictEqual(qs[2].choices.map((c) => [c.id, c.html, c.correct]), [['A', 'TRUE', false], ['B', 'FALSE', true], ['C', 'NOT GIVEN', false]]);
+  assert.strictEqual(qs[2].stem, '<p>Green roofs make buildings warmer.</p>');
+  assert.deepStrictEqual(dung(qs[3]), ['C']);
+  assert.deepStrictEqual(dung(qs[4]), ['B', 'D']);
+  assert.strictEqual(qs[4].points, 2);
+  assert.strictEqual(qs[4].title, 'Câu 5-6');
+  assert.ok(/Which TWO advantages/.test(qs[4].stem) && !/lower noise/.test(qs[4].stem), qs[4].stem);
+  assert.deepStrictEqual(qs[5].choices.map((c) => c.html), ['A', 'B']);
+  assert.deepStrictEqual(dung(qs[5]), ['B']);
+  assert.deepStrictEqual(dung(qs[6]), ['A']);
+  assert.deepStrictEqual(dung(qs[7]), ['B']);
+  assert.ok(/Questions 7-9/.test(qs[7].stimulus) && !/Questions 3-4/.test(qs[7].stimulus));
+  qs.forEach(khongLoi);
+});
+
+test('đề IELTS chưa có đáp án + file đáp án riêng: ô "1 ………" → trả lời ngắn chờ đáp án; câu 3-4 dùng bộ TRUE/FALSE/NOT GIVEN; khớp "5-6" với đáp án 5 và 6', async () => {
+  const kq = await mauIelts(false);
+  const qs = kq.banks[0].questions;
+  assert.deepStrictEqual(qs.map((q) => q.no), ['1', '2', '3', '4', '5-6', '7', '8', '9'], moTa(kq));
+  assert.ok(coLoi(qs[0], /chưa có đáp án/, 'error'));
+  assert.deepStrictEqual(qs[2].choices.map((c) => c.html), ['TRUE', 'FALSE', 'NOT GIVEN']);
+  const key = await docx.parseAnswerKey(await taoDocx('ielts-dap-an.docx', P('1. storm water') + P('2. sedum') + P('3. FALSE 4. NOT GIVEN') + P('5. B 6. D') + P('7. B') + P('8. A 9. B')), { fileName: 'ielts-key.docx' });
+  assert.strictEqual(key.count, 9);
+  const r = docx.applyAnswerKey(kq.banks, key);
+  assert.deepStrictEqual([r.matched, r.filled, r.conflicts, r.unused.length], [8, 8, 0, 0]);
+  assert.deepStrictEqual(qs[0].answers, ['storm water']);
+  assert.deepStrictEqual(dung(qs[2]), ['B']);
+  assert.deepStrictEqual(dung(qs[4]), ['B', 'D']);
+  assert.strictEqual(qs[4].type, 'ma');
+  assert.deepStrictEqual(dung(qs[5]), ['B']);
+  qs.forEach((q) => assert.deepStrictEqual(loi(q, 'error').map((i) => i.msg), [], q.title));
+});
+
+test('mẫu upload câu hỏi "[OC-NB]" + ANSWER có trọng số: TF, OC, MC, FB [[1]] = 50, SDL, ES, câu chùm EM gồm câu con', async () => {
+  const body = [
+    P('Câu 1 [TF-NB]: Is the sky blue?'), P('A) Yes'), P('B) No'), P('ANSWER: A,B=-10'),
+    P('Câu 2 [OC-H] : Thủ đô của Nhật Bản là'), P('A) Tokyo'), P('B)  Osaka'), P('C) Kyoto'), P('ANSWER: A, B=-10 ,C=-10'),
+    P('Câu 3 [FB-VD] :'), P('Mặt trời mọc ở hướng [[1]],'), P('lặn ở hướng [[2]].'), P('[[1]] = 50'), P('A) đông'), P('B) tây'), P('ANSWER: A=100,B=-10'), P('[[2]]=50'), P('A) tây'),
+    P('Câu 4 [SDL-VD]: Phương trình x', R('2', { sup: true }), ' − 4 = 0 có [[1]] nghiệm thực.'), P('[[1]]'), P('A) hai'), P('B) một'), P('C) không có'), P('ANSWER: A,B=-20'),
+    P('Câu 5 [MC-VDC] : Chọn các số nguyên tố.'), P('A) 2'), P('B) 3'), P('C) 4'), P('D) 9'), P('ANSWER: A=50, B=50, C=-50,D=-50'),
+    P('Câu 6 [ES-VDC]: Giải thích hai câu sau:'), P('a) Câu một.'), P('b) Câu hai.'), P('ANSWER: '), P('a, - Ý một.'), P('b, - Ý hai.'),
+    P('Câu 7 [EM-NB]: Đọc thông tin sau và trả lời:'), P('Lan có 3 quả táo và 2 quả cam.'),
+    P('[OC]: Lan có bao nhiêu quả táo?'), P('A) 2'), P('B) 3'), P('ANSWER: B'),
+    P(' [FB]: Lan có tất cả [[3]] quả.'), P('[[3]] = 100'), P('A) 5'),
+    P('[ES] : Em thích quả nào? Vì sao?'), P('ANSWER: '), P('Học sinh tự trả lời.'),
+    P('Câu 8 [OC-TH]: Câu sau câu chùm'), P('A) x'), P('B) y'), P('ANSWER: B')
+  ].join('');
+  const kq = await docx.parseDocx(await taoDocx('upload-cau-hoi.docx', body), { fileName: 'upload.docx' });
+  const qs = kq.banks[0].questions;
+  assert.deepStrictEqual(qs.map((q) => q.no), ['1', '2', '3', '4', '5', '6', '7.1', '7.2', '7.3', '8'], moTa(kq));
+  assert.deepStrictEqual(qs.map((q) => q.type), ['mc', 'mc', 'blanks', 'dropdowns', 'ma', 'essay', 'mc', 'blanks', 'essay', 'mc']);
+  assert.deepStrictEqual(qs.map((q) => q.meta.level), ['NB', 'TH', 'VD', 'VD', 'VDC', 'VDC', 'NB', 'NB', 'NB', 'TH']);
+  assert.deepStrictEqual(dung(qs[0]), ['A']);
+  assert.deepStrictEqual(dung(qs[1]), ['A']);
+  assert.strictEqual(qs[1].choices[1].html, 'Osaka');
+  assert.strictEqual(qs[2].stem, '<p>Mặt trời mọc ở hướng [b1],</p><p>lặn ở hướng [b2].</p>');
+  assert.deepStrictEqual(qs[2].blanks, [{ id: 'b1', accepts: ['đông'] }, { id: 'b2', accepts: ['tây'] }]);
+  assert.strictEqual(qs[3].stem, '<p>Phương trình x<sup>2</sup> − 4 = 0 có [b1] nghiệm thực.</p>');
+  assert.deepStrictEqual(qs[3].dropdowns, [{ id: 'b1', options: ['hai', 'một', 'không có'], correct: 0 }]);
+  assert.deepStrictEqual(dung(qs[4]), ['A', 'B']);
+  assert.strictEqual(qs[5].stem, '<p>Giải thích hai câu sau:</p><p>a) Câu một.</p><p>b) Câu hai.</p>');
+  assert.strictEqual(qs[5].feedback, '<p>a, - Ý một.</p><p>b, - Ý hai.</p>');
+  // câu chùm: nội dung chung thành đoạn dẫn của các câu con, tên "Câu 7.1"…
+  assert.strictEqual(qs[6].stimulus, '<p>Đọc thông tin sau và trả lời:</p><p>Lan có 3 quả táo và 2 quả cam.</p>');
+  assert.strictEqual(qs[6].title, 'Câu 7.1 [NB]');
+  assert.deepStrictEqual(dung(qs[6]), ['B']);
+  assert.deepStrictEqual(qs[7].blanks, [{ id: 'b3', accepts: ['5'] }]);
+  assert.strictEqual(qs[8].feedback, '<p>Học sinh tự trả lời.</p>');
+  assert.strictEqual(qs[9].stimulus, '');
+  qs.forEach(khongLoi);
+});
+
+test('đánh số lại theo phần ("Part 2", hoặc "1." ngay sau câu đã đủ phương án); danh sách "1. 2." trong nội dung câu không thành câu mới; đề ngắn chưa có đáp án không bị nhầm là file đáp án', async () => {
+  const body = [
+    P('Part 1'),
+    P('1. Question one?'), P('A. x', TAB, 'B. y'),
+    P('2. Read the statements:'), P('1. first statement'), P('2. second statement'), P('Which is true?'), P('A. 1', TAB, 'B. 2'),
+    P('Part 2: Grammar'),
+    P('1. Question three?'), P('A. x', TAB, 'B. y'),
+    P('1. Question four?'), P('A. p', TAB, 'B. q')
+  ].join('');
+  const kq = await docx.parseDocx(await taoDocx('so-danh-lai.docx', body), { fileName: 'so-danh-lai.docx' });
+  const qs = kq.banks[0].questions;
+  assert.deepStrictEqual(qs.map((q) => [q.title, q.meta.part]), [['Câu 1 (Phần 1)', 'Part 1'], ['Câu 2 (Phần 1)', 'Part 1'], ['Câu 1 (Phần 2)', 'Part 2: Grammar'], ['Câu 1 (Phần 2)', 'Part 2: Grammar']], moTa(kq));
+  assert.strictEqual(qs[1].stem, '<p>Read the statements:</p><p>1. first statement</p><p>2. second statement</p><p>Which is true?</p>');
+  assert.deepStrictEqual(qs.map((q) => q.choices.length), [2, 2, 2, 2]);
+  const ngan = await docx.parseDocx(await taoDocx('de-ngan.docx', P('Câu 1. Tính 2 + 2.') + P('Câu 2. Tính 3 + 3.') + P('Câu 3. Tính 4 + 4.') + P('Câu 4. Tính 5 + 5.')), { fileName: 'de-ngan.docx' });
+  assert.ok(!ngan.keyOnly, 'đề ngắn bị nhầm là file đáp án');
+  assert.deepStrictEqual(ngan.banks[0].questions.map((q) => q.type), ['essay', 'essay', 'essay', 'essay']);
+  // tài liệu hướng dẫn đánh số bước, tên file có "DA" (dự án) — không phải file đáp án
+  const hd = await docx.parseDocx(await taoDocx('tai-lieu-buoc.docx', P('1. Mở trang quản trị') + P('2. Chọn mục Người dùng') + P('3. Bấm nút Thêm mới') + P('4. Điền thông tin') + P('5. Lưu lại')), { fileName: 'Tai_lieu_DA_gui_IT.docx' });
+  assert.ok(!hd.keyOnly);
+  assert.ok(hd.banks[0].warnings.some((w) => /không có phương án hay đáp án/.test(w.msg)), JSON.stringify(hd.banks[0].warnings));
+});
+
+/* ---- đề THPT + hướng dẫn chấm riêng ---- */
+function deThpt(dapAnCau2) {
+  return [
+    P('PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn. Thí sinh trả lời từ câu 1 đến câu 2.'),
+    P('Câu 1. Hỏi một'), P('A. a', TAB, 'B. b', TAB, 'C. c', TAB, 'D. d'),
+    P('Câu 2. Hỏi hai'), P('A. a'), P('B. b'), P('C. c'), P('D. d'), dapAnCau2 ? P('Đáp án: ' + dapAnCau2) : '',
+    P('PHẦN II. Câu trắc nghiệm đúng sai.'),
+    P('Câu 1. Cho dãy số.'), P('a) ý a'), P('b) ý b'), P('c) ý c'), P('d) ý d'),
+    P('PHẦN III. Câu trắc nghiệm yêu cầu trả lời ngắn.'),
+    P('Câu 1. Tính tổng.'), P('Câu 2. Tính tích.'),
+    P('--- HẾT ---')
+  ].join('');
+}
+const HDC = [
+  TBL([['HƯỚNG DẪN CHẤM', 'ĐỀ THỬ']]),
+  P('Phần I. Câu trắc nghiệm nhiều phương án lựa chọn.'),
+  TBL([['Câu', '1', '2'], ['Đ/A', 'D', 'A']]),
+  P('Phần II. Câu trắc nghiệm đúng – sai.'),
+  TBL([[{ span: 2, c: 'Câu 1' }], ['a)', 'Đ'], ['b)', 'S'], ['c)', 'S'], ['d)', 'Đ']]),
+  P('Phần III. Câu trắc nghiệm yêu cầu trả lời ngắn.'),
+  P('Câu 1.'), TBL([['1', '2', ',', '5']]),
+  P('Câu 2.'), TBL([['3', '2', '', '']]),
+  P('--- HẾT ---')
+].join('');
+
+test('hướng dẫn chấm THPT 2025 riêng: bảng Phần I, bảng Đúng/Sai gộp ô, "Câu 1." + ô số Phần III → khoá theo phần; áp vào đề, giữ đáp án trong đề khi khác (cảnh báo)', async () => {
+  const u8 = await taoDocx('hdc-thpt.docx', HDC);
+  const chi = await docx.parseDocx(u8, { fileName: '26.12.HH.KS.HDC.0301.docx' });
+  assert.strictEqual(chi.keyOnly, true);
+  assert.deepStrictEqual(chi.key.answers, { 1: { 1: 'D', 2: 'A' }, 2: { 1: 'a) Đ; b) S; c) S; d) Đ' }, 3: { 1: '12,5', 2: '32' } });
+  const kq = await docx.parseDocx(await taoDocx('de-thpt.docx', deThpt('B')), { fileName: '26.12.HH.KS.0301.docx' });
+  const qs = kq.banks[0].questions;
+  assert.ok(coLoi(qs[0], /chưa xác định đáp án/, 'error') && coLoi(qs[2], /Đúng\/Sai/, 'error') && coLoi(qs[3], /chưa có đáp án/, 'error'));
+  const r = docx.applyAnswerKey(kq.banks, chi.key);
+  assert.deepStrictEqual([r.matched, r.filled, r.conflicts], [5, 4, 1]);
+  assert.deepStrictEqual(dung(qs[0]), ['D']);
+  assert.deepStrictEqual(dung(qs[1]), ['B']); // trong đề ghi B → giữ, cảnh báo
+  assert.ok(coLoi(qs[1], /file đáp án ghi A nhưng trong đề đánh dấu B — giữ B/, 'warn'), JSON.stringify(qs[1].issues));
+  assert.deepStrictEqual(qs[2].statements.map((s) => s.value), [true, false, false, true]);
+  assert.deepStrictEqual(qs[3].answers, ['12,5', '12.5']);
+  assert.deepStrictEqual(qs[4].answers, ['32']);
+  [0, 2, 3, 4].forEach((i) => assert.deepStrictEqual(loi(qs[i], 'error').map((x) => x.msg), [], qs[i].title));
+  // tên file để ghép đề ↔ đáp án
+  assert.strictEqual(docx.isAnswerKeyName('26.12.HH.KS.HDC.0301.docx'), true);
+  assert.strictEqual(docx.isAnswerKeyName('26.12.HH.KS.0301.docx'), false);
+  assert.strictEqual(docx.answerKeyBaseName('26.12.HH.KS.HDC.0301.docx'), docx.answerKeyBaseName('26.12.HH.KS.0301.docx'));
+  assert.strictEqual(docx.answerKeyBaseName('K4_ĐỀ THI THÁNG 1_KEY.docx'), docx.answerKeyBaseName('K4_ĐỀ THI THÁNG 1.docx'));
+  assert.strictEqual(docx.answerKeyBaseName('De 15p - Dap an.docx'), docx.answerKeyBaseName('De 15p.docx'));
+});
+
+test('file đáp án không ghi phần nhưng số câu lặp lại → tách phần theo lần lặp; "Câu 1: A" từng dòng; file không có đáp án nào → lỗi', async () => {
+  const key = await docx.parseAnswerKey(await taoDocx('dap-an-lap.docx', P('Câu 1: D') + P('Câu 2: A') + P('Câu 1: ĐSSĐ') + P('Câu 1: 12,5') + P('Câu 2: 32')), { fileName: 'da.docx' });
+  assert.deepStrictEqual(key.answers, { 1: { 1: 'D', 2: 'A' }, 2: { 1: 'ĐSSĐ' }, 3: { 1: '12,5', 2: '32' } });
+  const kq = await docx.parseDocx(await taoDocx('de-thpt-chua-dap-an.docx', deThpt('')), { fileName: 'de.docx' });
+  const r = docx.applyAnswerKey(kq.banks, key);
+  assert.deepStrictEqual([r.matched, r.filled], [5, 5]);
+  assert.deepStrictEqual(kq.banks[0].questions[2].statements.map((s) => s.value), [true, false, false, true]);
+  const rong = await docx.parseAnswerKey(await taoDocx('dap-an-rong.docx', P('Không có gì.')), { fileName: 'rong.docx' });
+  assert.strictEqual(rong.count, 0);
+  assert.ok(rong.issues.some((i) => i.level === 'error'));
+});
+
+test('chế độ "Câu N": dòng "… questions from 3 to 4" mở đoạn dẫn chung (không dính vào phương án câu trước); tiêu đề viết hoa sau phương án tách khỏi phương án', async () => {
+  const body = [
+    P('Câu 1. Hỏi một'), P('A. a'), P('B. b'), P('Đáp án: A'),
+    P('Câu 2. Hỏi hai'), P('A. a'), P('B. b'), P('Đáp án: B'),
+    P('Read the following passage and mark the letter A, B, C, or D to indicate the correct answer to each of the questions from 3 to 4.'),
+    P('Tom lives near the sea. He walks to the beach every day.'),
+    P('Câu 3. Where does Tom live?'), P('A. near the sea'), P('B. in a city'), P('Đáp án: A'),
+    P('Câu 4. How does he go to the beach?'), P('A. by bus'), P('B. on foot'), P('Đáp án: B'),
+    P('WRITING SECTION'),
+    P('Câu 5. Hỏi năm'), P('A. a'), P('B. b'), P('Đáp án: A')
+  ].join('');
+  const kq = await docx.parseDocx(await taoDocx('cau-pham-vi.docx', body), { fileName: 'cau-pham-vi.docx' });
+  const qs = kq.banks[0].questions;
+  assert.deepStrictEqual(qs.map((q) => q.no), ['1', '2', '3', '4', '5']);
+  assert.deepStrictEqual(qs[1].choices.map((c) => c.html), ['a', 'b']);
+  assert.strictEqual(qs[1].stimulus, '');
+  assert.ok(/Tom lives near the sea/.test(qs[2].stimulus) && /from 3 to 4/.test(qs[3].stimulus));
+  assert.strictEqual(qs[4].stimulus, '');
+  assert.strictEqual(qs[4].meta.part, 'WRITING SECTION');
+  assert.deepStrictEqual(qs[3].choices.map((c) => c.html), ['by bus', 'on foot']);
+  qs.forEach(khongLoi);
+});
+
+// File đề thật của trường trong Downloads (chỉ đọc, không chép vào repo) — bỏ qua khi máy không có.
+// Số liệu mong đợi = những gì người đọc thấy khi mở bằng Word (đối chiếu bằng Word COM khi viết test).
+const DL = 'C:/Users/Administrator/Downloads';
+function timThat(ten) { // tên file trong Downloads có thể lưu dạng Unicode tổ hợp (NFD)
+  try { const f = fs.readdirSync(DL).find((x) => x.normalize('NFC') === ten.normalize('NFC')); return f ? path.join(DL, f) : null; } catch (e) { return null; }
+}
+const THAT = [
+  // [đề, file đáp án, số câu, loại câu sau khi áp đáp án, số câu còn lỗi (MathType/OLE), kiểm thêm]
+  ['26.12.HH.KS.0301.docx', '26.12.HH.KS.HDC.0301.docx', 28, { mc: 18, tf: 4, short: 6 }, 3, (qs) => {
+    assert.ok(qs.some((q) => coLoi(q, /MathType \(Equation\.DSMT4\)/, 'error')));
+    assert.ok(qs.some((q) => coLoi(q, /ChemWindow.*chụp\/lưu đối tượng thành ảnh PNG/, 'error')));
+    assert.deepStrictEqual(qs.slice(0, 18).map((q) => q.choices ? q.choices.length : 0), new Array(18).fill(4));
+    assert.ok(qs.slice(18, 22).every((q) => q.statements && q.statements.length === 4 && q.statements.every((s) => typeof s.value === 'boolean')));
+    assert.ok(qs.slice(22).every((q) => q.type === 'short' && q.answers.length));
+  }],
+  ['25.2.TA.ĐGNL1.01.docx', '25.2.TA.ĐGNL1.01.HDC.docx', 40, { mc: 30, short: 5, essay: 5 }, 0, (qs, b) => {
+    assert.ok(b.warnings.some((w) => /Bỏ qua 7 câu ví dụ/.test(w.msg)));
+    assert.ok(qs.slice(10, 15).every((q) => q.choices.length === 7)); // bảng từ A–G dùng chung
+    assert.ok(qs.slice(25, 30).every((q) => /My new pet/.test(q.stimulus))); // đoạn văn trong bảng lồng
+  }],
+  ['26.10.IE.ĐG.7.Đ_ĐÁP_ÁN_BÔI_VÀNG.docx', null, 39, { short: 19, mc: 19, ma: 1 }, 0, (qs) => {
+    assert.deepStrictEqual(qs.map((q) => q.no).slice(19, 22), ['20', '21-22', '23']);
+    assert.ok(qs.every((q) => q.stimulus.length > 3000)); // đoạn văn đọc kèm mọi câu
+    assert.deepStrictEqual(qs[6].choices.map((c) => c.html), ['TRUE', 'FALSE', 'NOT GIVEN']);
+  }],
+  ['K4_TN_ĐỀ THI THÁNG 1_2025.2026.docx', 'K4_TN_ĐỀ THI THÁNG 1_2025.2026_KEY.docx', 30, { mc: 25, short: 5 }, 0, (qs) => {
+    assert.deepStrictEqual(qs.slice(18, 20).map((q) => q.choices.length), [4, 4]); // tìm lỗi sai
+  }],
+  ['file-mau-upload-cau-hoi.docx', null, 12, { mc: 4, blanks: 2, dropdowns: 2, essay: 2, ma: 2 }, 0, (qs) => {
+    assert.deepStrictEqual(qs.slice(6).map((q) => q.no), ['7.1', '7.2', '7.3', '7.4', '7.5', '7.6']);
+  }]
+];
+
+test('file Word thật trong Downloads (nếu có): số câu/loại/đáp án như khi mở bằng Word; file đáp án riêng điền đủ; MathType/OLE vẫn báo lỗi', async () => {
   let n = 0;
-  for (const t of ten) {
-    const p = path.join(DL, t);
-    if (!fs.existsSync(p)) continue;
+  for (const [de, da, soCau, loai, soLoi, them] of THAT) {
+    const pDe = timThat(de);
+    if (!pDe) continue;
     n++;
-    const kq = await docx.parseDocx(new Uint8Array(fs.readFileSync(p)), { fileName: t });
-    assert.ok(Array.isArray(kq.banks) && Array.isArray(kq.issues));
-    if (t.startsWith('26.12.HH')) {
-      const qs = kq.banks[0].questions;
-      assert.ok(qs.length >= 25, 'đề Hoá có 28 câu, đọc được ' + qs.length);
-      assert.ok(qs.some((q) => coLoi(q, /MathType \(Equation\.DSMT4\)/, 'error')));
-      assert.ok(qs.some((q) => coLoi(q, /ChemWindow/, 'error')));
-      assert.deepStrictEqual(qs.slice(0, 18).map((q) => q.choices ? q.choices.length : 0), new Array(18).fill(4));
-      assert.ok(qs.slice(18, 22).every((q) => q.statements && q.statements.length === 4));
+    let key = null;
+    if (da) {
+      const pDa = timThat(da);
+      if (!pDa) continue;
+      const u8Da = new Uint8Array(fs.readFileSync(pDa));
+      const chi = await docx.parseDocx(u8Da, { fileName: da });
+      assert.strictEqual(chi.keyOnly, true, da + ' phải được nhận là file đáp án');
+      key = await docx.parseAnswerKey(u8Da, { fileName: da });
+      assert.strictEqual(key.count, soCau, da + ': số đáp án');
     }
+    const kq = await docx.parseDocx(new Uint8Array(fs.readFileSync(pDe)), { fileName: de });
+    assert.ok(!kq.keyOnly, de);
+    const b = kq.banks[0], qs = b.questions;
+    if (key) {
+      const r = docx.applyAnswerKey(kq.banks, key);
+      assert.deepStrictEqual([r.matched, r.filled, r.conflicts, r.unused.length], [soCau, soCau, 0, 0], de + ': áp đáp án');
+    }
+    assert.strictEqual(qs.length, soCau, de + ': số câu');
+    const dem = {};
+    qs.forEach((q) => { dem[q.type] = (dem[q.type] || 0) + 1; });
+    assert.deepStrictEqual(dem, loai, de + ': loại câu');
+    const conLoi = qs.filter((q) => loi(q, 'error').length);
+    assert.strictEqual(conLoi.length, soLoi, de + ': câu còn lỗi ' + JSON.stringify(conLoi.map((q) => q.title + ': ' + loi(q, 'error').map((i) => i.msg).join(' | '))));
+    them(qs, b);
   }
   console.log('       (đã thử ' + n + ' file Word thật)');
 });

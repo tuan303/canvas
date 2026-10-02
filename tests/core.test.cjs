@@ -344,6 +344,10 @@ test('validateQuestion: lỗi chung (id, loại, điểm, độ dài)', () => {
   assert.deepStrictEqual(canh(cau('essay', { stem: '' })), ['Câu 7: nội dung câu hỏi đang trống']);
   assert.deepStrictEqual(canh(cau('essay', { stem: '<p>&nbsp;</p>' })), ['Câu 7: nội dung câu hỏi đang trống']);
   assert.deepStrictEqual(canh(cau('essay', { stem: '<p><img src="images/a.png"></p>' })), []);
+  // câu điền bài đọc / ngữ âm: cả đề nằm trong đoạn dẫn → không báo trống (qti cảnh báo khi xuất stimulus:'none')
+  assert.deepStrictEqual(canh(cau('mc', { stem: '', stimulus: '<p>My pet (26) ____ Milo.</p>',
+    choices: [{ id: 'A', html: 'is', correct: true }, { id: 'B', html: 'are', correct: false }] })), []);
+  assert.deepStrictEqual(canh(cau('essay', { stem: '', stimulus: '<p>&nbsp;</p>' })), ['Câu 7: nội dung câu hỏi đang trống']);
   assert.deepStrictEqual(loi(null), ['Câu hỏi không hợp lệ']);
 });
 

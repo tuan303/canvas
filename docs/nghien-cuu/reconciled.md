@@ -228,6 +228,21 @@ Use the same zip and add a quiz file at `{{QUIZ_IDENT}}/{{QUIZ_IDENT}}.xml`. The
 
 **`rcardinality="Single"` on every single-select `response_lid`**, including blank, dropdown and matching lids. Canvas omits it there; it is the QTI default and harmless, and it helps New Quizzes (report C, P14).
 
+**Amendment (2026-10-02, found with the Canvas simulator `tests/sim-chay.cjs`; implemented in `js/qti.js`, see DESIGN §5.2):**
+- **Text-only HTML goes out as `text/plain`.** When an MC/MA option, a matching left side or the `general_fb` solution is
+  HTML that, after stripping leading/trailing whitespace and `<br>` and unwrapping attribute-less `<p>`/`<div>`/`<span>`
+  layers, is a single text node containing `&`, `<`, `>` or a non-breaking space, Canvas's `detect_html`
+  (`html_helper.rb#L114-L132`, `remove_extraneous_nodes`) treats it as plain text but stores the *escaped* HTML string
+  (`2 &lt; 3`) in the text field (`text` / `left` / `neutral_comments`); the take-quiz page prints that field through
+  ERB escaping, so students see a literal `&lt;`. Such fragments are written as `texttype="text/plain"` with entities
+  decoded. FB_BLOCK above can therefore be `text/plain`, not always `text/html`. `tests/kiem-qti.cjs` warns
+  (`html-escaped-text`) on any `text/html` fragment of this shape.
+- **Safety net.** Canvas only unwraps the outermost unknown tag, so `<center><script>…` inside a solution keeps its
+  `<script>` after import. Any HTML that still contains `script`, `on…=`, `javascript:` and similar is cleaned again with
+  `html.cleanForCanvas`; without `html.js` the question is not exported.
+- Dropdown options, matching right sides and distractors have newlines and double spaces collapsed; with
+  `math: 'image'`, an empty `<math>` is dropped.
+
 ### 2.1 `multiple_choice_question`
 
 ```xml

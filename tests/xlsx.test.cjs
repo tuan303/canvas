@@ -770,6 +770,186 @@ test('giaiX, soSangChu, kieuAnh', () => {
   assert.strictEqual(xlsx._kieuAnh(core.utf8Encode('<?xml version="1.0"?><svg xmlns="x"/>')), 'SVG');
 });
 
+/* ---------------- Định dạng số, đối tượng nổi, ảnh trong ô có văn bản thay thế ---------------- */
+
+test('định dạng số: ngày tháng (dựng sẵn, tự đặt, hệ 1904), giờ, thời gian trôi, %, phân số; mã khác → để nguyên số', () => {
+  const f = xlsx._phanLoaiDinhDang, h = (id, ma, v, he1904) => xlsx._hienSo(v, f(id, ma), he1904);
+  // dựng sẵn: 14 ngày ngắn (có năm), 16 d-mmm (gõ "1/2" vào ô General), 22 ngày giờ, 20/21 giờ, 46 [h]:mm:ss, 9/10 %, 12/13 phân số
+  assert.deepStrictEqual([h(14, null, 16682), h(16, null, 46024), h(22, null, 45658.5), h(20, null, 0.3541666667), h(21, null, 0.3541666667), h(46, null, 1.5)],
+    ['02/09/1945', '02/01', '01/01/2025 12:00', '8:30', '8:30:00', '36:00:00']);
+  assert.deepStrictEqual([h(9, null, 0.25), h(10, null, 0.125), h(9, null, 0.6)], ['25%', '12.50%', '60%']);
+  assert.deepStrictEqual([0.5, 1.5, 0.333, 2, -0.5, 0, 0.999].map(v => h(12, null, v)), ['1/2', '1 1/2', '1/3', '2', '-1/2', '0', '1']);
+  assert.strictEqual(h(13, null, 0.3125), '5/16');
+  // mã tự đặt: thứ tự d/m/y theo mã; [$-vùng], "chữ", [Màu] bị bỏ qua khi phân loại
+  assert.deepStrictEqual(['dd/mm/yyyy', 'd/m/yy', 'm/d/yyyy', '[$-42A]dd/mm/yyyy', 'yyyy-mm-dd', 'mmm-yy'].map(m => h(164, m, 16682)),
+    ['02/09/1945', '2/9/45', '9/2/1945', '02/09/1945', '1945-09-02', '02/09/1945']);
+  assert.deepStrictEqual([h(164, '0.0%', 0.256), h(164, '# ??/16', 0.3125), h(164, '[h]:mm', 1.5), h(164, 'h:mm:ss', 0.5)], ['25.6%', '5/16', '36:00', '12:00:00']);
+  assert.deepStrictEqual(['General', '@', '#,##0', '0.00E+00', '#,##0.00" đ"', '[Red]0.00', '0.00;[Red]-0.00'].map(m => f(164, m)), [null, null, null, null, null, null, null]);
+  assert.deepStrictEqual([f(0), f(1), f(2), f(4), f(49)], [null, null, null, null, null]);
+  assert.deepStrictEqual(f(164, '"Ngày" dd'), { kieu: 'ngay', coNam: false, ma: 'dd' });
+  // hệ ngày 1900 (có 29/02/1900 giả) và 1904; ngoài khoảng → để nguyên
+  assert.deepStrictEqual([h(14, null, 1), h(14, null, 59), h(14, null, 61), xlsx._hienSo(0, f(14), true), h(14, null, -1)],
+    ['01/01/1900', '28/02/1900', '01/03/1900', '01/01/1904', null]);
+});
+
+test('ô số có định dạng: ngày tháng do Excel tự đổi (1/2, 8/3) → lỗi có số dòng/ô; ngày có năm → cảnh báo; % và phân số hiện như Excel; hệ 1904', async () => {
+  const bytes = await taoXlsx({
+    date1904: true,
+    // kiểu 1: 16 (d-mmm), 2: 14 (ngày ngắn), 3: 9 (%), 4: 12 (# ?/?), 5: 164 (dd/mm/yyyy), 6: 20 (h:mm)
+    xfs: [16, 14, 9, 12, 164, 20], numFmts: { 164: 'dd/mm/yyyy' },
+    sheets: [{
+      name: 'Câu hỏi', rows: [
+        [1, ['STT', 'Loại câu', 'Nội dung câu hỏi', 'A', 'B', 'C', 'Đáp án', 'Điểm', 'Lời giải']],
+        [2, [{ n: 44562, st: 2 }, 'TN', 'Phân số nào lớn nhất?', { n: 44562, st: 1 }, '2/3', { n: 0.5, st: 4 }, 'B', 1]],
+        [3, [2, 'TLN', 'Viết phân số 8 phần 3', null, null, null, { n: 44622, st: 1 }, { n: 44562, st: 1 }]],
+        [4, [3, 'TN', 'Tỉ lệ nào bằng một nửa?', { n: 0.25, st: 3 }, { n: 0.5, st: 3 }, { n: 1.5, st: 4 }, 'B', 1, { n: 0.5, st: 6 }]],
+        [5, [4, 'TN', 'Ngày Quốc khánh?', { n: 15220, st: 2 }, { n: 15206, st: 5 }, 'Khác', 'A', 1]],   // hệ 1904: 15220 = 02/09/1945
+        [6, [null, 'ĐOẠN', { n: 44562, st: 1 }]],
+        [7, [5, 'SỐ', 'Một nửa bằng bao nhiêu?', null, null, null, { n: 0.5, st: 4 }, 1]],
+        [8, [6, 'SỐ', 'Hai mươi lăm phần trăm?', null, null, null, { n: 0.25, st: 3 }, 1]]
+      ]
+    }]
+  });
+  const kq = await xlsx.parseXlsx(bytes, { fileName: 'ngay.xlsx', latex: null });
+  const b = kq.banks[0], qs = b.questions;
+  assert.deepStrictEqual(kq.issues, []);
+  // hệ 1904: 44562 → 02/01/2026; STT là ngày thì vô hại (chỉ là số câu)
+  assert.deepStrictEqual([qs[0].no, qs[0].title], ['02/01/2026', 'Câu 02/01/2026']);
+  assert.deepStrictEqual(qs[0].choices.map(c => [c.html, c.correct]), [['02/01', false], ['2/3', true], ['1/2', false]]);
+  const loiNgay = (o, chu) => 'ô ' + o + ' bị Excel tự đổi thành ngày tháng (' + chu + ') — thường do gõ phân số như 1/2, 8/3. ' +
+    'Hãy định dạng ô là Văn bản (Text) rồi gõ lại, hoặc gõ thêm dấu nháy đơn phía trước: \'1/2';
+  assert.deepStrictEqual(qs[0].issues, [I('error', 'Dòng 2: ' + loiNgay('D2', '02/01'), 'q01')]);
+  // đáp án TLN và điểm là ngày → lỗi (không lấy số thô 44622 làm đáp án)
+  assert.deepStrictEqual(qs[1].answers, ['03/03']);
+  assert.deepStrictEqual(qs[1].issues.map(i => i.level + ' ' + i.msg), [
+    'error Dòng 3: ' + loiNgay('G3', '03/03'), 'error Dòng 3: ' + loiNgay('H3', '02/01'),
+    'error Dòng 3: điểm "02/01" không hợp lệ (ví dụ: 1 hoặc 0,25)']);
+  // % và phân số: hiện như Excel, không lỗi; ô giờ ở Lời giải
+  assert.deepStrictEqual(qs[2].choices.map(c => c.html), ['25%', '50%', '1 1/2']);
+  assert.deepStrictEqual([qs[2].issues, qs[2].feedback], [[], '<p>12:00</p>']);
+  // ngày có năm: ghi dd/mm/yyyy (hoặc đúng mã tự đặt) + cảnh báo kiểm tra
+  assert.deepStrictEqual(qs[3].choices.map(c => c.html), ['02/09/1945', '19/08/1945', 'Khác']);
+  const canhNgay = (o, chu) => 'warn Dòng 5: ô ' + o + ' là ngày tháng, công cụ ghi thành ' + chu + ' — kiểm tra lại ngày/tháng; ' +
+    'nếu không phải ngày tháng hãy định dạng ô là Văn bản (Text) rồi gõ lại';
+  assert.deepStrictEqual(qs[3].issues.map(i => i.level + ' ' + i.msg), [canhNgay('D5', '02/09/1945'), canhNgay('E5', '19/08/1945')]);
+  // dòng ĐOẠN là ngày không năm → lỗi cấp ngân hàng
+  assert.deepStrictEqual(b.warnings.map(w => w.level + ' ' + w.msg), ['error Dòng 6 (đoạn dẫn): ' + loiNgay('C6', '02/01')]);
+  // SỐ: ô phân số dùng giá trị (0.5); ô % không dùng số thô 0.25 → báo đáp án không hợp lệ
+  assert.deepStrictEqual([qs[4].numeric, qs[4].issues], [{ exact: 0.5, margin: 0 }, []]);
+  assert.deepStrictEqual(qs[5].issues.map(i => i.msg), ['Dòng 8: đáp án số "25%" không hợp lệ (ví dụ: 12,5 hoặc 12,5 ± 0,1 hoặc 1,5 .. 2)']);
+});
+
+test('đối tượng nổi không phải ảnh (Text Box, Equation của Excel, biểu đồ, đường kẻ) → cảnh báo đúng dòng; ảnh trong ô: khoá Text → alt, đường dẫn tệp thì bỏ', async () => {
+  const bytes = await taoXlsx({
+    sheets: [{
+      name: 'S', rows: [
+        [1, ['Loại câu', 'Nội dung câu hỏi', 'A', 'B', 'Đáp án']],
+        [2, ['TN', 'Câu có hộp văn bản', 'x', 'y', 'A']],
+        [3, ['TN', 'Câu có công thức Equation', 'x', 'y', 'B']],
+        [4, ['ĐOẠN', 'Đoạn dẫn có đường kẻ']],
+        [5, ['TN', 'Ảnh trong ô có mô tả', { img: PNG_DO, alt: 'Hình tròn tô đỏ' }, { img: PNG_XANH, alt: 'C:\\Users\\GiaoVien\\Pictures\\hinh.png' }, 'A']],
+        [6, ['TN', 'Ảnh trong ô, mô tả là tên tệp', { img: PNG_LAM, alt: 'hinh-3.png' }, 'z', 'A']],
+        [7, ['TLN', 'Câu trên dòng bị ẩn', null, null, '5'], { hidden: true }]
+      ],
+      images: [{ row: 1, col: 3, hinh: 'textbox', text: 'Gợi ý:   quy đồng' }, { row: 2, col: 1, hinh: 'equation', text: 'x^2' },
+        { row: 0, col: 0, hinh: 'chart' }, { row: 3, col: 2, hinh: 'line' }]
+    }]
+  });
+  const kq = await xlsx.parseXlsx(bytes, { fileName: 'hinh.xlsx', latex: null });
+  const b = kq.banks[0], qs = b.questions;
+  const duoi = ' bị bỏ qua — công cụ chỉ đọc chữ trong ô và ảnh; hãy gõ nội dung vào ô (công thức dạng $…$) hoặc chụp thành ảnh PNG';
+  assert.deepStrictEqual(kq.issues, []);   // biểu đồ trên dòng tiêu đề: bỏ qua, không báo
+  assert.deepStrictEqual(qs[0].issues, [I('warn', 'Dòng 2: hộp văn bản nổi ở ô D2 ("Gợi ý: quy đồng")' + duoi, 'q01')]);
+  assert.deepStrictEqual(qs[1].issues, [I('warn', 'Dòng 3: công thức (Equation) nổi ở ô B3' + duoi, 'q02')]);
+  assert.deepStrictEqual(b.warnings, [I('warn', 'Dòng 4 (đoạn dẫn): hình vẽ nổi ở ô C4' + duoi)]);
+  assert.deepStrictEqual(qs[2].choices.map(c => c.html), [
+    '<img src="images/img_001.png" alt="Hình tròn tô đỏ" style="max-width:100%;height:auto">', img('img_002.png')]);
+  assert.deepStrictEqual(qs[3].choices.map(c => c.html), [img('img_003.png'), 'z']);
+  // dòng ẩn / bị Lọc giấu vẫn đọc, nhưng báo để giáo viên khỏi bất ngờ
+  assert.deepStrictEqual([qs[4].answers, qs[4].issues], [['5'], [I('warn', 'Dòng 7: dòng đang bị ẩn (hoặc bị Lọc giấu) trong Excel nhưng vẫn được đọc — ' +
+    'không muốn xuất câu này thì xoá dòng hoặc bỏ chọn câu trên công cụ', 'q05')]]);
+});
+
+/* ---------------- Tệp do Excel thật ghi khi giáo viên điền mẫu (dien-mau-bang-office.ps1) ---------------- */
+
+async function moTep(ten) {
+  const u8 = fs.readFileSync(path.join(THU_MUC, ten));
+  return { u8, z: await zip.readZip(u8) };
+}
+
+test('office-giao-vien.xlsx: Excel 365 điền mẫu (xoá dòng ví dụ, 10 loại câu, công thức dùng chung, 0,25 kiểu Việt Nam, ảnh nổi + ảnh trong ô, ghi chú, lọc, ô gộp)', async () => {
+  const { u8, z } = await moTep('office-giao-vien.xlsx');
+  // tệp thật sự chứa những thứ Excel ghi mà bộ dựng fixture không ghi
+  const s1 = core.utf8Decode(z['xl/worksheets/sheet1.xml']);
+  assert.match(s1, /<f t="shared" ref="A10:A15" si="0">A9\+1<\/f>/);          // công thức dùng chung
+  assert.match(s1, /<c r="A11" s="\d+"><f t="shared" si="0"\/><v>8<\/v><\/c>/);
+  assert.match(s1, /<c r="A4" s="\d+" t="str"><f>[^<]*<\/f><v\/><\/c>/);     // công thức ra chuỗi rỗng (dòng ĐOẠN)
+  assert.match(s1, /<c r="E14" s="\d+" t="e" vm="1"><v>#VALUE!<\/v><\/c>/);  // ảnh "Đặt trong ô"
+  assert.match(s1, /<mergeCell ref="P2:P15"\/>/);
+  assert.match(s1, /<autoFilter ref="A1:R15"/);
+  assert.match(s1, /<legacyDrawing r:id="rId\d"\/>/);                        // ghi chú ô (VML)
+  assert.ok(z['xl/comments1.xml'] && z['xl/richData/rdrichvalue.xml'] && z['xl/calcChain.xml']);
+  const dr = core.utf8Decode(z['xl/drawings/drawing1.xml']);
+  assert.strictEqual((dr.match(/<xdr:pic>/g) || []).length, 1, 'ảnh ví dụ của mẫu phải bị xoá cùng dòng ví dụ, chỉ còn ảnh giáo viên dán');
+  assert.match(dr, /<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>3<\/xdr:col><xdr:colOff>\d+<\/xdr:colOff><xdr:row>4<\/xdr:row>/);
+
+  const kq = await xlsx.parseXlsx(u8, { fileName: 'office-giao-vien.xlsx', latex: LATEX_GIA });
+  assert.deepStrictEqual(kq.issues, []);
+  assert.deepStrictEqual(kq.banks.map(b => [b.title, b.questions.length, b.warnings.length]), [['Toán 6 – Phân số (thử)', 12, 0]]);
+  const b = kq.banks[0], qs = b.questions;
+  qs.forEach(q => assert.deepStrictEqual(q.issues, [], q.title));
+  assert.deepStrictEqual(qs.map(q => [q.src.row, q.title, q.type, q.points]), [
+    [2, 'Câu 1 [NB]', 'mc', 0.25], [3, 'Câu 2 [TH]', 'ma', 0.5], [5, 'Câu 3 [TH]', 'mc', 0.25], [6, 'Câu 4 [TH]', 'short', 0.25],
+    [8, 'Câu 5 [TH]', 'tf', 1], [9, 'Câu 6 [VD]', 'num', 0.5], [10, 'Câu 7 [NB]', 'blanks', 1], [11, 'Câu 8 [TH]', 'dropdowns', 1],
+    [12, 'Câu 9 [NB]', 'matching', 1], [13, 'Câu 10 [VD]', 'essay', 1], [14, 'Câu 11 [NB]', 'mc', 1], [15, 'Câu 12 [NB]', 'mc', 1]]);
+  // phân số gõ vào cột phương án/đáp án (kiểu Văn bản của mẫu) giữ nguyên chữ, không thành ngày tháng
+  assert.deepStrictEqual(qs[0].choices.map(c => (c.correct ? '*' : '') + c.html), ['*5/6', '2/5', '1/6', '5/12']);
+  assert.deepStrictEqual(qs[1].choices.map(c => (c.correct ? '*' : '') + c.html), ['*2/4', '3/5', '*50/100', '4/6']);
+  assert.strictEqual(qs[1].stem, '<p>Chọn các phân số bằng <math><mi>\\frac{1}{2}</mi></math>:<br><em>(chọn tất cả đáp án đúng)</em></p>');
+  const doan = '<p>Một chiếc bánh được chia thành 8 phần bằng nhau.<br>An ăn 3 phần, em An ăn 2 phần.<br>Dựa vào thông tin trên, trả lời hai câu tiếp theo.</p>';
+  assert.deepStrictEqual([qs[2].stimulus, qs[3].stimulus, qs[4].stimulus], [doan, doan, '']);
+  assert.strictEqual(qs[2].stem, '<p>Hai bạn đã ăn bao nhiêu phần chiếc bánh?</p><p><img src="images/img_001.png" alt="Hình tròn chia 8 phần bằng nhau" style="max-width:100%;height:auto" width="160"></p>');
+  assert.deepStrictEqual(qs[3].answers, ['3/8']);
+  assert.deepStrictEqual(qs[4].statements.map(s => s.key + ':' + s.value), ['a:true', 'b:false', 'c:false', 'd:true']);
+  assert.deepStrictEqual(qs[5].numeric, { exact: 0.75, margin: 0 });
+  assert.deepStrictEqual(qs[6].blanks, [{ id: 'b1', accepts: ['2'] }, { id: 'b2', accepts: ['6'] }]);
+  assert.deepStrictEqual(qs[7].dropdowns.map(d => d.correct), [0, 1]);
+  assert.deepStrictEqual([qs[8].pairs, qs[8].distractors], [[{ left: '1/2', right: '0,5' }, { left: '1/4', right: '0,25' }, { left: '3/4', right: '0,75' }], ['0,2', '1,5']]);
+  assert.match(qs[9].feedback, /^<p>3\/5 &gt; 4\/7<\/p><p>Quy đồng: .*<br>Vì 21 &gt; 20 nên /);
+  // ảnh "Đặt trong ô" ở cột phương án A, B; Excel ghi đường dẫn tệp gốc làm văn bản thay thế → không dùng làm alt
+  assert.deepStrictEqual(qs[10].choices.map(c => c.html), [img('img_002.png'), img('img_003.png'), 'Cả hai hình', 'Không hình nào']);
+  assert.deepStrictEqual([xlsx._kieuAnh(b.images['img_002.png']), xlsx._kieuAnh(b.images['img_003.png'])], ['png', 'png']);
+  assert.deepStrictEqual(b.images['img_002.png'], taoPng(48, 36, [210, 18, 53]));
+  assert.strictEqual(qs[11].choices[0].html, 'ba <strong>phần</strong> bảy');
+  assert.deepStrictEqual(qs.map(q => q.meta.topic).slice(0, 3), ['Cộng phân số', 'Phân số bằng nhau', 'Cộng phân số']);
+});
+
+test('office-tu-lam.xlsx: bảng tính Excel giáo viên tự lập — 1/2, 8/3 thành ngày → lỗi; 25 %, 0.00, # ?/?, dd/mm/yyyy; hộp văn bản; Format as Table; danh sách x14; trang ẩn', async () => {
+  const { u8, z } = await moTep('office-tu-lam.xlsx');
+  const s1 = core.utf8Decode(z['xl/worksheets/sheet1.xml']);
+  assert.match(s1, /<x14:dataValidation [^>]*>.*<xm:f>DS!\$A\$1:\$A\$10<\/xm:f>/);
+  assert.ok(z['xl/tables/table1.xml'], 'thiếu Format as Table');
+  assert.match(core.utf8Decode(z['xl/styles.xml']), /<xf numFmtId="16" [^>]*applyNumberFormat="1"\/>/);
+  const kq = await xlsx.parseXlsx(u8, { fileName: 'De-15-phut.xlsx', latex: LATEX_GIA });
+  assert.deepStrictEqual(kq.issues, []);
+  assert.deepStrictEqual(kq.banks.map(b => [b.title, b.questions.length]), [['De-15-phut', 7]]);
+  const qs = kq.banks[0].questions;
+  assert.deepStrictEqual(qs.map(q => [q.src.row, q.title, q.type]), [[3, 'Câu 1', 'mc'], [4, 'Câu 2', 'mc'], [5, 'Câu 3', 'short'],
+    [6, 'Câu 4', 'mc'], [7, 'Câu 5', 'mc'], [8, 'Câu 6', 'mc'], [9, 'Câu 7', 'mc']]);
+  const loi = (q) => q.issues.map(i => i.level + ' ' + i.msg.replace(/ — .*/, ''));
+  // gõ 1/2, 1/3, 2/3, 3/4 vào ô General (máy tiếng Anh: tháng/ngày) → 4 lỗi, câu không được xuất
+  assert.deepStrictEqual(loi(qs[0]), ['D3', 'E3', 'F3', 'G3'].map((o, i) => 'error Dòng 3: ô ' + o + ' bị Excel tự đổi thành ngày tháng (' + ['02/01', '03/01', '03/02', '04/03'][i] + ')'));
+  assert.deepStrictEqual(qs[1].choices.map(c => (c.correct ? '*' : '') + c.html), ['25%', '50%', '*60%', '75%']);
+  assert.deepStrictEqual(loi(qs[2]), ['error Dòng 5: ô H5 bị Excel tự đổi thành ngày tháng (03/08)']);
+  assert.deepStrictEqual(qs[3].choices.map(c => c.html), ['0.75', '0.5', '0.7', '1.25']);
+  assert.deepStrictEqual(qs[4].choices.map(c => c.html), ['1/2', '1/4', '3/4', '1 1/2']);
+  assert.deepStrictEqual(qs[5].choices.map(c => c.html), ['02/09/1945', '19/08/1945', '07/05/1954', '30/04/1975']);
+  assert.deepStrictEqual(loi(qs[5]), ['D8', 'E8', 'F8', 'G8'].map(o => 'warn Dòng 8: ô ' + o + ' là ngày tháng, công cụ ghi thành ' +
+    { D8: '02/09/1945', E8: '19/08/1945', F8: '07/05/1954', G8: '30/04/1975' }[o]));
+  assert.deepStrictEqual(loi(qs[6]), ['warn Dòng 9: hộp văn bản nổi ở ô G9 ("Gợi ý: quy đồng mẫu số") bị bỏ qua']);
+  [1, 3, 4].forEach(i => assert.deepStrictEqual(qs[i].issues, [], qs[i].title));
+});
+
 /* ---------------- Chạy ---------------- */
 
 (async () => {

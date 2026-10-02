@@ -80,13 +80,32 @@ function duongDanAnToan(goc, rawUrl) {
   try { p = decodeURIComponent(raw); } catch (e) { return null; }
   if (p[0] !== '/' || /[\x00-\x1f\\:*?"<>|]/.test(p)) return null;   // \ và : (ổ đĩa, ADS) trên Windows
   const doan = p.split('/');
-  // không cho .. và mọi thứ bắt đầu bằng dấu chấm (.env, .git, .vercel…)
-  if (doan.some(function (d) { return d === '..' || d[0] === '.'; })) return null;
+  // không cho .. và mọi thứ bắt đầu bằng dấu chấm (.env, .git, .vercel…); không cho tên 8.3 kiểu ENV~1
+  // (Windows mở được .env qua tên ngắn) và tên kết thúc bằng dấu chấm/cách (Windows tự cắt bỏ)
+  if (doan.some(function (d) { return d === '..' || d[0] === '.' || /~\d/.test(d) || /[. ]$/.test(d); })) return null;
   const full = path.resolve(goc, '.' + p);
   const rel = path.relative(goc, full);
   if (rel && (rel.split(path.sep)[0] === '..' || path.isAbsolute(rel))) return null;
   return full;
 }
+
+// Đường dẫn THẬT (sau symlink, tên ngắn 8.3, hoa/thường) tương đối với gốc thật có được phục vụ không:
+// trong gốc, không đoạn nào bắt đầu bằng dấu chấm, không phải mã nguồn api/
+function duocPhucVu(relThuc) {
+  if (!relThuc || path.isAbsolute(relThuc)) return false;
+  const doan = relThuc.split(/[\\/]+/);
+  if (doan[0] === '..' || /^api$/i.test(doan[0])) return false;
+  return !doan.some(function (d) { return d[0] === '.'; });
+}
+
+// Chống DNS rebinding: khi chỉ nghe trên máy (mặc định), chỉ nhận Host là tên của chính máy này
+function laHostCucBo(h) {
+  const m = /^(\[[0-9a-fA-F:.]+\]|[^:\[\]]+)(?::\d{1,5})?$/.exec(String(h || ''));
+  if (!m) return false;
+  const ten = m[1].toLowerCase();
+  return ten === 'localhost' || ten === '[::1]' || /^127(\.\d{1,3}){3}$/.test(ten) || /^[a-z0-9-]+(\.[a-z0-9-]+)*\.localhost$/.test(ten);
+}
+function laDiaChiVongLap(host) { return !host || host === 'localhost' || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host); }
 
 function phucVuTinh(goc, req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.setHeader('Allow', 'GET, HEAD'); return guiLoi(res, 405, 'Phương thức không được phép'); }
@@ -107,19 +126,23 @@ function phucVuTinh(goc, req, res) {
 
 function guiFile(goc, full, st, req, res) {
   if (!st || !st.isFile()) return guiLoi(res, 404, 'Không tìm thấy');
-  // chặn liên kết tượng trưng trỏ ra ngoài thư mục gốc
-  fs.realpath(full, function (e, thuc) {
+  // Kiểm lại trên đường dẫn THẬT do hệ điều hành trả (realpath.native: giải symlink VÀ tên ngắn 8.3 của Windows,
+  // ví dụ /ENV~1 → .env, /GIT~1/config → .git/config) — symlink ra ngoài gốc, dotfile, api/ đều bị chặn
+  const thucHoa = fs.realpath.native || fs.realpath;
+  thucHoa(full, function (e, thuc) {
     let gocThuc = goc;
-    try { gocThuc = fs.realpathSync(goc); } catch (x) { /* giữ goc */ }
+    try { gocThuc = (fs.realpathSync.native || fs.realpathSync)(goc); } catch (x) { /* giữ goc */ }
     const rel = e ? '..' : path.relative(gocThuc, thuc);
-    if (!rel || rel.split(path.sep)[0] === '..' || path.isAbsolute(rel)) return guiLoi(res, 403, 'Đường dẫn bị từ chối');
+    if (!duocPhucVu(rel)) return guiLoi(res, 403, 'Đường dẫn bị từ chối');
     res.statusCode = 200;
-    res.setHeader('Content-Type', MIME[path.extname(full).toLowerCase()] || 'application/octet-stream');
+    res.setHeader('Content-Type', MIME[path.extname(thuc).toLowerCase()] || 'application/octet-stream');
     res.setHeader('Content-Length', st.size);
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     if (req.method === 'HEAD') return res.end();
-    const s = fs.createReadStream(full);
+    const s = fs.createReadStream(thuc);
     s.on('error', function () { res.destroy(); });
     s.pipe(res);
   });
@@ -127,6 +150,7 @@ function guiFile(goc, full, st, req, res) {
 
 /* ---------- máy chủ ---------- */
 
+// opts: {root, handler, log, anyHost} — anyHost=true bỏ kiểm Host (chỉ khi cố ý mở ra mạng LAN)
 function createServer(opts) {
   opts = opts || {};
   const goc = path.resolve(opts.root || GOC);
@@ -136,11 +160,15 @@ function createServer(opts) {
     const raw = String(req.url || '/');
     const pathname = raw.split('?')[0];
     if (ghiLog) {
-      // chỉ ghi op, không ghi query (callback có mã OAuth)
+      // chỉ ghi op, không ghi query (callback có mã OAuth); bỏ ký tự điều khiển (không giả dòng log)
       res.on('finish', function () {
         const op = /^\/api\/canvas\/?$/.test(pathname) ? '?op=' + (/[?&]op=([a-z_]+)/.exec(raw) || [])[1] : '';
-        console.log(req.method + ' ' + pathname + op + ' → ' + res.statusCode);
+        console.log(req.method + ' ' + pathname.replace(/[\x00-\x1f\x7f]/g, '?').slice(0, 300) + op + ' → ' + res.statusCode);
       });
+    }
+    if (!opts.anyHost && !laHostCucBo(req.headers.host)) {
+      // trang lạ trỏ tên miền của nó về 127.0.0.1 (DNS rebinding) không đọc được file / gọi được /api/canvas
+      return guiLoi(res, 403, 'Tên máy (Host) không được phép — mở bằng http://localhost hoặc http://127.0.0.1');
     }
     if (/^\/api\/canvas\/?$/.test(pathname)) {
       Promise.resolve().then(function () { return handler(req, res); }).catch(function () {
@@ -154,12 +182,18 @@ function createServer(opts) {
 
 if (require.main === module) {
   const n = loadEnv(path.join(GOC, '.env'));
-  const port = Number(process.env.PORT) || 8787;
+  const pt = String(process.env.PORT || '').trim();
+  const port = /^\d{1,5}$/.test(pt) ? Number(pt) : 8787;   // PORT=0: hệ điều hành chọn cổng trống
   const host = process.env.HOST || '127.0.0.1';
-  createServer({ log: true }).listen(port, host, function () {
-    console.log('Ngân hàng câu hỏi Canvas — http://' + (host === '0.0.0.0' ? 'localhost' : host) + ':' + port + '/');
+  const vongLap = laDiaChiVongLap(host);
+  const sv = createServer({ log: true, anyHost: !vongLap }).listen(port, host, function () {
+    console.log('Ngân hàng câu hỏi Canvas — http://' + (host === '0.0.0.0' || host === '::' ? 'localhost' : host) + ':' + sv.address().port + '/');
     console.log(n ? 'Đã nạp ' + n + ' biến từ .env' : 'Không có .env (kết nối Canvas tắt — xem .env.example)');
+    if (!vongLap) console.log('CẢNH BÁO: HOST=' + host + ' — máy khác trong mạng truy cập được công cụ và /api/canvas. Chỉ dùng trong mạng tin cậy.');
   });
 }
 
-module.exports = { createServer: createServer, parseEnv: parseEnv, loadEnv: loadEnv, MIME: MIME, safePath: duongDanAnToan };
+module.exports = {
+  createServer: createServer, parseEnv: parseEnv, loadEnv: loadEnv, MIME: MIME, safePath: duongDanAnToan,
+  isServable: duocPhucVu, isLocalHost: laHostCucBo
+};

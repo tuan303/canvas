@@ -138,35 +138,56 @@
     }).join(',') + '})';
   }
 
-  function nodeEvaluator(code, names) {
-    var vm = require('vm');
-    var ctx = vm.createContext({});
-    var s = vm.runInContext(code + duoiTraVe(names), ctx, { timeout: 3000 });
-    return Promise.resolve(JSON.parse(s));
+  // Giới hạn kích thước: mã dữ liệu của gói (vùng <script> đề) và JSON trả về (chống làm treo/tràn bộ nhớ trang)
+  var MA_TOI_DA = 16 * 1024 * 1024;
+  var KQ_TOI_DA = 48 * 1024 * 1024;
+  function kiemMa(code) {
+    var s = String(code);
+    if (s.length > MA_TOI_DA) throw new Error('Mã dữ liệu của gói quá lớn (' + Math.round(s.length / 1048576) + ' MB)');
+    return s;
+  }
+  function docKetQua(s) {
+    if (typeof s !== 'string') throw new Error('Dữ liệu trả về không phải JSON');
+    if (s.length > KQ_TOI_DA) throw new Error('Dữ liệu đề trong gói quá lớn (' + Math.round(s.length / 1048576) + ' MB)');
+    try { return JSON.parse(s); } catch (e) { throw new Error('Dữ liệu trả về không phải JSON'); }
   }
 
-  /** Trình duyệt: chạy mã trong <iframe sandbox="allow-scripts"> (origin rỗng, CSP chặn mạng),
-   *  trao đổi qua postMessage, có hạn giờ. Trả về hàm evalData(code, names) → Promise<object>. */
+  /** Node (kiểm thử / công cụ dòng lệnh): vm KHÔNG phải ranh giới bảo mật, nên giảm thiểu:
+   *  - ngữ cảnh rỗng không prototype (chặn lối thoát this.constructor.constructor('return process')),
+   *  - microtaskMode 'afterEvaluate' (Promise.then(vòng lặp vô hạn) cũng bị hạn giờ),
+   *  - kết quả phải là chuỗi (đối tượng có toString độc sẽ chạy NGOÀI hạn giờ khi JSON.parse ép kiểu). */
+  function nodeEvaluator(code, names) {
+    var vm = require('vm');
+    var src = kiemMa(code) + duoiTraVe(names);
+    var ctx = vm.createContext(Object.create(null), { microtaskMode: 'afterEvaluate', codeGeneration: { strings: true, wasm: false } });
+    var s = vm.runInContext(src, ctx, { timeout: 3000 });
+    return Promise.resolve(docKetQua(s));
+  }
+
+  /** Trình duyệt: chạy mã trong <iframe sandbox="allow-scripts"> (KHÔNG allow-same-origin → origin rỗng "null",
+   *  không chạm được cookie/sessionStorage/token Canvas của trang; CSP chặn mạng), trao đổi qua postMessage
+   *  (chỉ nhận thư có source === iframe và origin "null"), có hạn giờ. Trang chính không bao giờ eval.
+   *  Trả về hàm evalData(code, names) → Promise<object>. */
   function makeIframeEvaluator(doc, opt) {
     opt = opt || {};
     var hanGio = opt.timeout || 8000;
     var win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
     var BOOT = '<!doctype html><meta charset="utf-8">' +
-      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' \'unsafe-eval\'">' +
+      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' \'unsafe-eval\'; form-action \'none\'; base-uri \'none\'">' +
       '<script>' +
-      'window.addEventListener("message",function(e){var m=e.data;if(!m||m.nh!=="scorm-eval")return;' +
+      'window.addEventListener("message",function(e){var m=e.data;if(e.source!==parent||!m||m.nh!=="scorm-eval")return;' +
       'var o={nh:"scorm-eval-kq",id:m.id};' +
-      'try{o.json=(0,eval)(m.code+m.tail);o.ok=true;}catch(err){o.ok=false;o.error=String(err&&err.message||err);}' +
-      'parent.postMessage(o,"*");});' +
+      'try{o.json=(0,eval)(m.code+m.tail);o.ok=typeof o.json==="string";if(!o.ok){o.json=null;o.error="kết quả không phải chuỗi JSON";}}catch(err){o.ok=false;o.json=null;o.error=String(err&&err.message||err).slice(0,500);}' +
+      'try{parent.postMessage(o,"*");}catch(err){parent.postMessage({nh:"scorm-eval-kq",id:m.id,ok:false,error:"không gửi được kết quả"},"*");}});' +
       'parent.postMessage({nh:"scorm-eval-san-sang"},"*");' +
       '<\/script>';
     return function evalData(code, names) {
       return new Promise(function (resolve, reject) {
-        var tail;
-        try { tail = duoiTraVe(names); } catch (e) { reject(e); return; }
+        var tail, ma;
+        try { tail = duoiTraVe(names); ma = kiemMa(code); } catch (e) { reject(e); return; }
         var fr = doc.createElement('iframe');
         var id = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2);
-        var xong = false, hen = null;
+        var xong = false, hen = null, daGui = false;
         function don() {
           xong = true;
           if (hen) clearTimeout(hen);
@@ -174,20 +195,25 @@
           if (fr.parentNode) fr.parentNode.removeChild(fr);
         }
         function nghe(e) {
-          if (xong || e.source !== fr.contentWindow) return;
+          // chỉ thư của chính iframe này; iframe sandbox không allow-same-origin luôn có origin "null"
+          if (xong || !fr.contentWindow || e.source !== fr.contentWindow || e.origin !== 'null') return;
           var m = e.data;
           if (!m || typeof m !== 'object') return;
           if (m.nh === 'scorm-eval-san-sang') {
-            fr.contentWindow.postMessage({ nh: 'scorm-eval', id: id, code: String(code), tail: tail }, '*');
+            if (daGui) return;      // chỉ gửi mã một lần (trang con nạp lại/điều hướng không xin được lần nữa)
+            daGui = true;
+            fr.contentWindow.postMessage({ nh: 'scorm-eval', id: id, code: ma, tail: tail }, '*');
           } else if (m.nh === 'scorm-eval-kq' && m.id === id) {
             don();
-            if (!m.ok) { reject(new Error('Mã dữ liệu trong gói bị lỗi: ' + m.error)); return; }
-            try { resolve(JSON.parse(m.json)); } catch (err) { reject(new Error('Dữ liệu trả về không phải JSON')); }
+            if (!m.ok) { reject(new Error('Mã dữ liệu trong gói bị lỗi: ' + String(m.error).slice(0, 500))); return; }
+            try { resolve(docKetQua(m.json)); } catch (err) { reject(err); }
           }
         }
         if (win) win.addEventListener('message', nghe);
         fr.setAttribute('sandbox', 'allow-scripts');
+        fr.setAttribute('referrerpolicy', 'no-referrer');
         fr.setAttribute('aria-hidden', 'true');
+        fr.setAttribute('tabindex', '-1');
         fr.style.display = 'none';
         fr.srcdoc = BOOT;
         hen = setTimeout(function () { if (!xong) { don(); reject(new Error('Quá thời gian chạy mã dữ liệu của gói (' + hanGio + ' ms)')); } }, hanGio);

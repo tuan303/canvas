@@ -327,6 +327,9 @@
     munderover: tapHop(MCHUNG + 'accent accentunder align'), none: tapHop(MCHUNG), semantics: tapHop('encoding')
   };
   var TOKEN_MATH = tapHop('mi mn mo ms mtext annotation');
+  // Bỏ hẳn (cả nội dung) khi gặp trong MathML
+  var BO_HAN = tapHop('script style svg template noscript iframe object embed video audio source track input button ' +
+    'select textarea option datalist canvas head title meta link base frame frameset applet param');
   // Thuộc tính CSS Canvas giữ lại (canvas_sanitize.rb#L668-L750)
   var CSS_OK = (function () {
     var o = tapHop('align-content align-items align-self background border border-radius clear clip color column-gap cursor ' +
@@ -613,7 +616,12 @@
       var out = {}, rieng = TT_MATH[name] || {};
       Object.keys(attrs).forEach(function (k) {
         if (k === 'class' || k === 'id' || /^on/.test(k)) return;
-        if (rieng[k] || k === 'style' || k === 'title' || k === 'dir' || k === 'lang' || (/^aria-/.test(k) && TT_CHUNG[k])) out[k] = attrs[k];
+        if (k === 'style') { // cùng bộ lọc CSS với thẻ HTML (Canvas xoá font-weight, opacity…; var() phải giải)
+          var sty = styleChuoi(tinhStyle([], attrs[k]).kb);
+          if (sty) out.style = sty;
+          return;
+        }
+        if (rieng[k] || k === 'title' || k === 'dir' || k === 'lang' || (/^aria-/.test(k) && TT_CHUNG[k])) out[k] = attrs[k];
       });
       return out;
     }
@@ -644,12 +652,15 @@
           return;
         }
         if (name === 'semantics' && !opts.keepAnnotations) {
-          var tb = x.children.filter(function (c) { return c.type === 'el' && c.name !== 'annotation' && c.name !== 'annotation-xml'; })[0];
+          // phần trình bày = con MathML đầu tiên không phải chú thích (bỏ qua <script>… lạc vào)
+          var tb = x.children.filter(function (c) { return c.type === 'el' && MATHML[c.name] && c.name !== 'annotation' && c.name !== 'annotation-xml'; })[0];
           if (tb) out.push.apply(out, lamMath([tb], cha));
           return;
         }
         if ((name === 'annotation' || name === 'annotation-xml') && !opts.keepAnnotations) return;
         if (name === 'math') { out.push.apply(out, lamMath(x.children, cha)); return; } // math lồng nhau
+        // mã / khối nhúng lọt vào MathML (kể cả trong mtext, annotation-xml): bỏ cả nội dung, không biến thành chữ
+        if (BO_HAN[name]) { if (name === 'script') bao('warn', 'Đã bỏ mã <script>'); return; }
         if (!MATHML[name]) { // thẻ lạ trong MathML: giữ chữ bên trong
           if (TOKEN_MATH[cha]) out.push({ type: 'text', text: core.xmlText(x) });
           else out.push.apply(out, lamMath(x.children, cha));
@@ -657,7 +668,8 @@
         }
         var con = lamMath(x.children, name);
         if (TOKEN_MATH[name]) { // cắt khoảng trắng hai đầu của token
-          var txt = con.filter(function (c) { return c.type === 'text'; }).map(function (c) { return c.text; }).join('').replace(/^ +| +$/g, '');
+          // token chỉ chứa chữ: thẻ con (MathML lỗi kiểu <mi><mi>x</mi></mi>) → lấy chữ của nó, không làm mất chữ
+          var txt = con.map(function (c) { return c.type === 'text' ? c.text : core.xmlText(c); }).join('').replace(/^ +| +$/g, '');
           con = txt ? [{ type: 'text', text: txt }] : [];
         }
         out.push({ type: 'el', name: name, attrs: locThuocTinhMath(name, x.attrs), children: con });
@@ -668,7 +680,11 @@
       var at = locThuocTinhMath('math', el.attrs);
       if (!at.xmlns) { var a2 = { xmlns: 'http://www.w3.org/1998/Math/MathML' }; Object.keys(at).forEach(function (k) { a2[k] = at[k]; }); at = a2; }
       else at.xmlns = 'http://www.w3.org/1998/Math/MathML';
-      return { type: 'el', name: 'math', attrs: at, children: lamMath(el.children, 'math') };
+      var con = lamMath(el.children, 'math');
+      var m = { type: 'el', name: 'math', attrs: at, children: con };
+      // công thức rỗng (chỉ còn khung / khoảng trắng sau khi làm sạch): bỏ — không hiện gì, không đổi được sang ảnh
+      if (!core.xmlText(m).replace(/[\s\u200B-\u200D\u2060]/g, '')) return null;
+      return m;
     }
 
     // ----- HTML -----
@@ -695,7 +711,7 @@
       }
       if (x.type !== 'el') return [];
       var name = x.name;
-      if (name === 'math') return [lamTheMath(x)];
+      if (name === 'math') { var mm = lamTheMath(x); return mm ? [mm] : []; }
       if (name === 'script') { bao('warn', 'Đã bỏ mã <script>'); return []; }
       if (name === 'style') { bao('info', 'Đã bỏ khối <style> — định dạng của các lớp đã biết được chuyển thành style trực tiếp'); return []; }
       if (name === 'svg') { bao('warn', 'Hình vẽ SVG không đưa được lên Canvas — đã bỏ; hãy chụp lại thành ảnh PNG'); return []; }

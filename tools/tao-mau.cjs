@@ -25,6 +25,7 @@ const CONG_CU = 'Ngân hàng câu hỏi Canvas';
 const NAVY = '23328C', DO = 'D21235', VANG = 'FFAD00', XAM = '5B6475', CHU = '1F2937', XANH = '1E7B34';
 const NEN_NAVY = 'EEF1FA', NEN_VANG = 'FFF6DD', VIEN = 'B8BFD0';
 const FONT = 'Be Vietnam Pro', FONT_DE = 'Times New Roman', FONT_TOAN = 'Cambria Math';
+const FONT_DU_PHONG = 'Arial';                          // máy không có Be Vietnam Pro: Word thay bằng w:altName (đã thử Word 365)
 const BANK_TOAN = 'Mẫu – Toán 12 (ví dụ)';
 const BANK_ANH = 'Mẫu – Tiếng Anh (ví dụ)';
 const TEN_DOCX = 'Mau-ngan-hang-cau-hoi.docx';
@@ -331,7 +332,7 @@ function phanHuongDan() {
   const h1 = (s) => p(s, { style: 'Heading1' });
   const doanHD = (nd) => p(nd, { style: HD });
   const cham = (nd) => p(nd, { style: HD, numId: 1 });
-  const buoc = (n, tieuDe, nd) => p([B('Bước ' + n + '.', NAVY), T, B(tieuDe), ' '].concat(nd), { style: 'Buoc' });
+  const buoc = (n, tieuDe, nd) => p([B('Bước ' + n + '.', NAVY), T, B(tieuDe)].concat(/^[:,.]/.test(nd[0]) ? [] : [' '], nd), { style: 'Buoc' });
   const ma = (s) => r(s, { b: true, color: NAVY });                     // từ khoá trong bảng
   const de = (s, o) => r(s, Object.assign({ font: FONT_DE, sz: 21 }, o || {})); // chữ ví dụ (phông đề thi)
   const o3 = (a, b, c) => [{ nd: [p([].concat(a), { style: 'BangHD' })] }, b, { nd: [p([].concat(c), { style: 'BangHD' })] }];
@@ -342,17 +343,18 @@ function phanHuongDan() {
   out.push(p('MẪU SOẠN NGÂN HÀNG CÂU HỎI CANVAS', { style: 'Title' }));
   out.push(p('Soạn câu hỏi trong Word theo mẫu này, nạp vào công cụ ' + CONG_CU + ' để nhận gói QTI, rồi nhập cả ngân hàng vào Canvas ' +
     'trong một lần — không phải gõ lại từng câu.', { style: 'Subtitle' }));
-  out.push(p([B('Lưu ý: ', NAVY), 'phần hướng dẫn này nằm trước dòng ', B('NGÂN HÀNG:'), ' đầu tiên nên công cụ tự bỏ qua — có thể giữ nguyên hoặc xoá. ' +
-    'Từ trang sau là hai ngân hàng ví dụ (Toán 12 và Tiếng Anh) có đủ mọi loại câu; thầy cô xoá các câu ví dụ rồi soạn câu hỏi của mình theo đúng cách trình bày đó.'],
+  out.push(p([B('Cách dùng mẫu: ', NAVY), 'công cụ tự bỏ qua mọi thứ đứng trước dòng ', B('NGÂN HÀNG:'), ' đầu tiên, nên các trang hướng dẫn này giữ lại hay xoá đi đều được. ' +
+    'Sau phần hướng dẫn là hai ngân hàng ví dụ (Toán 12, Tiếng Anh) có đủ mọi loại câu: thầy cô sửa tên ngân hàng, xoá các câu ví dụ rồi soạn câu hỏi của mình theo đúng cách trình bày đó.'],
   { style: 'GhiChu' }));
 
   out.push(h1('1. Bốn bước sử dụng'));
   out.push(buoc(1, 'Soạn câu hỏi', ['dưới một dòng ', ma('NGÂN HÀNG: <tên ngân hàng>'), '. Mỗi câu bắt đầu bằng “Câu 1.”, “Câu 2.”…; phương án “A.”, “B.”, “C.”, “D.” ' +
     'đặt ở đầu dòng; đáp án ghi ở dòng “Đáp án: …”. Một tệp có thể chứa nhiều ngân hàng.']));
-  out.push(buoc(2, 'Nạp tệp', ['vào công cụ ' + CONG_CU + ': kéo thả tệp .docx vào trang (có thể nạp cùng lúc tệp Excel theo mẫu hoặc gói SCORM).']));
+  out.push(buoc(2, 'Nạp tệp', ['vào công cụ ' + CONG_CU + ': lưu dưới dạng Word (.docx) rồi kéo thả tệp vào trang công cụ (nạp cùng lúc được nhiều tệp Word, tệp Excel theo mẫu hoặc gói SCORM).']));
   out.push(buoc(3, 'Soát lại', ['từng câu như học sinh sẽ thấy: đáp án đúng được tô xanh, câu có lỗi được báo đỏ và không được xuất. Sửa trong Word rồi nạp lại.']));
-  out.push(buoc(4, 'Nhập vào Canvas', ['bằng nút Tải gói QTI, rồi làm theo hướng dẫn hiện trên công cụ — New Quizzes: Item Banks → ⋮ → Import Content; ' +
-    'Classic Quizzes: Settings → Import Course Content → QTI .zip file.']));
+  out.push(buoc(4, 'Nhập vào Canvas', [': bấm Tải gói QTI rồi làm theo hướng dẫn hiện ngay dưới nút. New Quizzes (khuyên dùng): trong khoá học mở Ngân Hàng Câu Hỏi (Item Banks) → ' +
+    'mở một ngân hàng còn trống → ⋮ → Import Content → chọn tệp .zip. Classic Quizzes: Cài Đặt → Nhập Nội Dung Khóa Học (Settings → Import Course Content) → ' +
+    'Tập tin .zip QTI (QTI .zip file).']));
 
   out.push(h1('2. Các dòng đánh dấu'));
   out.push(doanHD('Từ khoá không phân biệt chữ hoa, chữ thường; viết có dấu hay không dấu đều được (NGÂN HÀNG = Ngân hàng = NGAN HANG). ' +
@@ -362,7 +364,7 @@ function phanHuongDan() {
     o3(ma('NGÂN HÀNG: <tên>'), 'Bắt đầu một ngân hàng câu hỏi (tên hiện trên Canvas). Một tệp có thể có nhiều ngân hàng; không có dòng này thì tên ngân hàng là tên tệp.',
       de('NGÂN HÀNG: Toán 12 – Chương 1')),
     o3(ma('ĐIỂM MẶC ĐỊNH: <số>'), 'Điểm của mỗi câu từ dòng này trở đi (không ghi thì mỗi câu 1 điểm).', de('ĐIỂM MẶC ĐỊNH: 0,25')),
-    o3(ma('PHẦN I. …  /  PHẦN 2. …'), 'Tiêu đề phần. Tên phần có “đúng sai”, “trả lời ngắn” hoặc “tự luận” thì các câu trong phần mặc định thuộc loại đó.',
+    o3(ma('PHẦN I. …  /  PHẦN 2. …'), 'Tiêu đề phần (không phải câu hỏi). Tên phần có “đúng sai”, “trả lời ngắn” hoặc “tự luận” thì câu không ghi thẻ loại trong phần đó được hiểu theo loại này.',
       de('PHẦN II. Câu trắc nghiệm đúng sai')),
     o3(ma('ĐOẠN DẪN: …  …  HẾT ĐOẠN DẪN'), 'Đoạn văn, bảng số liệu hoặc hình dùng chung; được chèn vào đầu mỗi câu nằm giữa hai dòng này.',
       de('ĐOẠN DẪN: Đọc đoạn văn sau…')),
@@ -377,8 +379,8 @@ function phanHuongDan() {
     o3(ma('*A.'), 'Dấu * trước nhãn đánh dấu phương án đúng.', de('*C. Hà Nội')),
     o3(ma('a)  b)  c)  d)'), 'Các ý của câu Đúng/Sai, mỗi ý một dòng.', de('a) Hàm số đồng biến trên ℝ.')),
     o3(ma('Đáp án: …  (ĐA:  Answer:)'), 'Đáp án đúng — được ưu tiên cao nhất. Cách ghi theo từng loại câu ở mục 3.', de('Đáp án: B')),
-    o3(ma('Gạch chân / chữ đỏ / tô nền'), 'Đánh dấu nhãn phương án đúng khi không có dòng “Đáp án:”. Câu Đúng/Sai: ý có nhãn được đánh dấu là Đúng, các ý còn lại là Sai.',
-      [de('B', { b: true, u: true, color: DO }), de('. 2     '), de('C', { b: true, hl: 'yellow' }), de('. 3')]),
+    o3(ma('Gạch chân / chữ đỏ / tô nền'), 'Khi không có dòng “Đáp án:”: gạch chân, tô đỏ hoặc tô nền nhãn của phương án đúng (một trong ba cách). Câu Đúng/Sai: ý có nhãn được đánh dấu là Đúng, các ý còn lại là Sai.',
+      [de('B', { b: true, u: true, color: DO }), de('. 2'), r('  hoặc  ', { sz: 16, color: XAM }), de('B', { b: true, hl: 'yellow' }), de('. 2')]),
     o3(ma('[[…]]'), 'Ô điền khuyết trong nội dung câu; nhiều cách viết đúng ngăn bằng dấu |.', de('Thủ đô của Việt Nam là [[Hà Nội|Ha Noi]].')),
     o3(ma('[[*…|…|…]]'), 'Ô chọn trong danh sách thả xuống; dấu * đánh dấu lựa chọn đúng.', de('She [[*has|have]] two cats.')),
     o3(ma('trái => phải'), 'Một cặp ghép nối mỗi dòng (dùng được cả ->, →). Dòng “Nhiễu: x; y” thêm vế phải gây nhiễu.', de('Hà Nội => Việt Nam')),
@@ -398,7 +400,7 @@ function phanHuongDan() {
   out.push(bang([['Thẻ', 'Loại câu trên Canvas', 'Cách soạn', 'Cách ghi đáp án'],
     o4('[TN]', 'Một đáp án (Multiple Choice)', 'Phương án A. … H., đúng một phương án đúng', de('Đáp án: B')),
     o4('[NĐ]', 'Nhiều đáp án (Multiple Answers)', 'Phương án A. … H., từ hai phương án đúng trở lên', de('Đáp án: A, C')),
-    o4('[ĐS]', 'Đúng/Sai nhiều ý — dạng đề thi THPT từ 2025 (Multiple Dropdowns, hoặc tách thành các câu Đúng/Sai)', 'Các ý a) b) c) d), mỗi ý một dòng',
+    o4('[ĐS]', 'Đúng/Sai nhiều ý — dạng đề thi THPT từ 2025 (Multiple Dropdowns, hoặc tách thành các câu Đúng/Sai — chọn khi xuất)', 'Các ý a) b) c) d), mỗi ý một dòng',
       [de('Đáp án: ĐSĐS'), r('  hoặc  ', { sz: 16, color: XAM }), de('a) Đ, b) S, c) Đ, d) S')]),
     o4('[TLN]', 'Trả lời ngắn (Short Answer)', 'Không có phương án; các cách viết đúng ngăn bằng dấu ;', de('Đáp án: 8/3; 2,67')),
     o4('[SỐ]', 'Điền số (Numerical)', 'Không có phương án; đáp án là một số, có thể kèm sai số hoặc một khoảng',
@@ -413,20 +415,23 @@ function phanHuongDan() {
   out.push(cham([B('Dùng Equation của Word: '), 'Insert → Equation (Chèn → Phương trình) hoặc phím tắt Alt + =. Phân số, căn, tích phân, hệ phương trình, vectơ… ' +
     'được chuyển nguyên vẹn sang Canvas, học sinh phóng to vẫn nét.']));
   out.push(cham([B('Không dùng MathType / Equation 3.0: '), 'công cụ sẽ báo lỗi. Cách chuyển: thẻ MathType → Convert Equations… → chọn chuyển sang ' +
-    'Office Math (Word 2007 trở lên) → Convert. Không có MathType thì chụp công thức thành ảnh PNG rồi chèn lại.']));
+    'Office Math (Word 2007 trở lên) → Convert. Không có MathType (hoặc công thức Equation 3.0 của đề cũ) thì gõ lại bằng Alt + =, hoặc chụp công thức thành ảnh PNG rồi chèn.']));
   out.push(cham([B('Gõ nhanh LaTeX '), 'giữa hai dấu $, ví dụ ', de(L`$\frac{1}{2}$`), ', ', de(L`$\sqrt{x+1}$`), ', ', de(L`$x^2$`), ', ', de(L`$\vec{a}$`), ', ',
-    de(L`$\int_0^1 f(x)\,dx$`), ' — công cụ tự chuyển thành công thức.']));
-  out.push(cham([B('Số thập phân '), 'viết bằng dấu phẩy như thường lệ (2,5). Riêng câu điền số [SỐ], khi làm bài trên Canvas học sinh gõ dấu chấm (2.5).']));
+    de(L`$\int_0^1 f(x)\,dx$`), ' — trong Word vẫn hiện dạng chữ, công cụ tự chuyển thành công thức (như Câu 10 ví dụ).']));
+  out.push(cham([B('Số thập phân '), 'viết bằng dấu phẩy như thường lệ (2,5). Câu điền số [SỐ]: Canvas chỉ hiểu dấu chấm nên học sinh phải gõ 2.5 — hãy nhắc trong đề. ' +
+    'Muốn học sinh gõ dấu phẩy cũng được chấm đúng thì dùng [TLN]: công cụ tự chấp nhận cả 2,5 lẫn 2.5.']));
 
   out.push(h1('5. Hình ảnh và bảng'));
-  out.push(cham([B('Chèn ảnh PNG/JPG trực tiếp '), '(Insert → Pictures), để kiểu In Line with Text (cùng dòng với chữ). Ảnh có thể nằm trong nội dung câu, phương án hoặc lời giải.']));
-  out.push(cham([B('Ghi mô tả ảnh '), '(chuột phải vào ảnh → View Alt Text): công cụ đưa mô tả lên Canvas cho học sinh dùng trình đọc màn hình.']));
+  out.push(cham([B('Chèn ảnh PNG/JPG trực tiếp '), '(Insert → Pictures / Chèn → Ảnh), nên để kiểu In Line with Text (cùng dòng với chữ). Ảnh có thể nằm trong nội dung câu, phương án hoặc lời giải.']));
+  out.push(cham([B('Ghi mô tả ảnh '), '(chuột phải vào ảnh → View Alt Text / Xem Văn bản Thay thế): công cụ đưa mô tả lên Canvas cho học sinh dùng trình đọc màn hình.']));
   out.push(cham([B('Không dùng '), 'Shapes, Text Box, SmartArt, biểu đồ của Word hay ảnh EMF/WMF — Canvas không hiển thị được. Hãy chụp thành ảnh PNG rồi chèn.']));
   out.push(cham([B('Bảng Word '), 'dùng được trong nội dung câu và đoạn dẫn. Bảng mà mỗi ô là một phương án (bắt đầu bằng A. B. …) được hiểu là các phương án.']));
 
   out.push(h1('6. Mẹo để nạp không lỗi'));
   out.push(cham(['Ưu tiên dòng ', B('Đáp án:'), ' — rõ ràng nhất, không phụ thuộc định dạng. Chỉ gạch chân / tô đỏ / tô nền khi không có dòng Đáp án.']));
-  out.push(cham('Phương án sai để chữ thường; không tô màu cả trang hay cả câu hỏi.'));
+  out.push(cham('Không gạch chân, tô đỏ hay tô nền nhãn của phương án sai (công cụ sẽ hiểu là đáp án đúng); muốn nhấn mạnh chữ trong đề thì dùng in đậm hoặc in nghiêng.'));
+  out.push(cham('Phương án hay câu do Word tự đánh số (A. B. C. D., Câu 1, Câu 2… tự nhảy số) vẫn đọc được bình thường.'));
+  out.push(cham('Tệp .doc đời cũ: mở bằng Word → File → Save As → Word Document (.docx) rồi mới nạp.'));
   out.push(cham('Câu Đúng/Sai được Canvas chấm theo từng ý (mỗi ý đúng = điểm câu ÷ số ý); thang 0,1 – 0,25 – 0,5 – 1 điểm của Bộ GD&ĐT không áp dụng được.'));
   out.push(cham('Trong một ngân hàng không nên lặp lại số câu; nếu đề đánh số lại từ đầu ở mỗi phần, công cụ ghi thêm tên phần vào tên câu.'));
   return out;
@@ -654,7 +659,7 @@ function fontTableXml() {
   const font = (ten, inner) => '<w:font w:name="' + ten + '">' + inner + '</w:font>';
   return DECL + '<w:fonts xmlns:w="' + NS_W + '" xmlns:r="' + NS_R + '">' +
     font(FONT_DE, '<w:panose1 w:val="02020603050405020304"/><w:charset w:val="00"/><w:family w:val="roman"/><w:pitch w:val="variable"/>') +
-    font(FONT, '<w:altName w:val="' + FONT_DE + '"/><w:charset w:val="00"/><w:family w:val="swiss"/><w:pitch w:val="variable"/>') +
+    font(FONT, '<w:altName w:val="' + FONT_DU_PHONG + '"/><w:panose1 w:val="020B0604020202020204"/><w:charset w:val="00"/><w:family w:val="swiss"/><w:pitch w:val="variable"/>') +
     font(FONT_TOAN, '<w:panose1 w:val="02040503050406030204"/><w:charset w:val="00"/><w:family w:val="roman"/><w:pitch w:val="variable"/>') +
     font('Arial', '<w:panose1 w:val="020B0604020202020204"/><w:charset w:val="00"/><w:family w:val="swiss"/><w:pitch w:val="variable"/>') +
     '</w:fonts>';
@@ -736,7 +741,7 @@ async function taoDocx(opts) {
 
 // cột của trang "Câu hỏi": [tiêu đề, độ rộng, kiểu ô (căn giữa?)]
 const COT = [
-  ['STT', 6, 'giua'], ['Loại câu', 21, 'giua'], ['Nội dung câu hỏi', 58], ['Ảnh', 27],
+  ['STT', 6, 'giua'], ['Loại câu', 21, 'giua'], ['Nội dung câu hỏi', 58], ['Ảnh', 29],
   ['A', 22], ['B', 22], ['C', 22], ['D', 22], ['E', 13], ['F', 13], ['G', 13], ['H', 13],
   ['Đáp án', 15, 'giua'], ['Điểm', 7, 'giua'], ['Lời giải', 44], ['Ngân hàng', 23], ['Mức độ', 9, 'giua'], ['Chủ đề', 18]
 ];
@@ -804,7 +809,12 @@ function soDongChu(s, rong) {
 }
 
 // kiểu ô (cellXfs) — xem stylesXlsx()
-const XF = { MAC_DINH: 0, TIEU_DE: 1, CHU: 2, GIUA: 3, DOAN: 4, DOAN_GIUA: 5, TEN: 6, PHU: 7, MUC: 8, NHAN: 9, VAN: 10, NHAN_BANG: 11, GHI_CHU: 12 };
+const XF = { MAC_DINH: 0, TIEU_DE: 1, CHU: 2, GIUA: 3, DOAN: 4, DOAN_GIUA: 5, TEN: 6, PHU: 7, MUC: 8, NHAN: 9, VAN: 10, NHAN_BANG: 11, GHI_CHU: 12,
+  COT_VB: 13, COT_VB_GIUA: 14, COT_GIUA: 15, CHU_VB: 16, GIUA_VB: 17, DOAN_VB: 18, DOAN_GIUA_VB: 19 };
+// cột phương án A–H và Đáp án định dạng Văn bản (@, numFmtId 49): Excel không tự đổi "1/2", "8/3" thành ngày tháng,
+// "0,25" giữ nguyên chữ dù máy đặt kiểu số nào. Không đặt @ cho Nội dung/Lời giải: ô Văn bản dài hơn 255 ký tự Excel hiện "####".
+const COT_VAN_BAN = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'Đáp án'];
+const vanBan = (c) => COT_VAN_BAN.includes(COT[c][0]);
 
 function stylesXlsx() {
   const font = (o) => '<font>' + (o.b ? '<b/>' : '') + (o.i ? '<i/>' : '') + '<sz val="' + (o.sz || 11) + '"/><color rgb="FF' + (o.c || CHU) + '"/>' +
@@ -817,8 +827,9 @@ function stylesXlsx() {
   const borders = ['<border><left/><right/><top/><bottom/><diagonal/></border>',
     '<border>' + ['left', 'right', 'top', 'bottom'].map((k) => canh(k, 'thin', 'D5DAE5')).join('') + '<diagonal/></border>',
     '<border><left/><right/><top/>' + canh('bottom', 'medium', DO) + '<diagonal/></border>'];
-  const xf = (font0, fill0, border, al) => '<xf numFmtId="0" fontId="' + font0 + '" fillId="' + fill0 + '" borderId="' + border + '" xfId="0"' +
-    (font0 ? ' applyFont="1"' : '') + (fill0 ? ' applyFill="1"' : '') + (border ? ' applyBorder="1"' : '') + (al ? ' applyAlignment="1"><alignment ' + al + '/></xf>' : '/>');
+  const xf = (font0, fill0, border, al, vb) => '<xf numFmtId="' + (vb ? 49 : 0) + '" fontId="' + font0 + '" fillId="' + fill0 + '" borderId="' + border + '" xfId="0"' +
+    (vb ? ' applyNumberFormat="1"' : '') + (font0 ? ' applyFont="1"' : '') + (fill0 ? ' applyFill="1"' : '') + (border ? ' applyBorder="1"' : '') +
+    (al ? ' applyAlignment="1"><alignment ' + al + '/></xf>' : '/>');
   const tren = 'vertical="top" wrapText="1"', giua = 'horizontal="center" vertical="top" wrapText="1"';
   const xfs = [];
   xfs[XF.MAC_DINH] = xf(0, 0, 0);
@@ -834,6 +845,13 @@ function stylesXlsx() {
   xfs[XF.VAN] = xf(0, 0, 0, tren);
   xfs[XF.NHAN_BANG] = xf(5, 4, 1, tren);
   xfs[XF.GHI_CHU] = xf(6, 0, 0, tren);
+  xfs[XF.COT_VB] = xf(0, 0, 0, tren, 1);
+  xfs[XF.COT_VB_GIUA] = xf(0, 0, 0, giua, 1);
+  xfs[XF.COT_GIUA] = xf(0, 0, 0, giua);
+  xfs[XF.CHU_VB] = xf(0, 0, 1, tren, 1);
+  xfs[XF.GIUA_VB] = xf(0, 0, 1, giua, 1);
+  xfs[XF.DOAN_VB] = xf(0, 3, 1, tren, 1);
+  xfs[XF.DOAN_GIUA_VB] = xf(0, 3, 1, giua, 1);
   return DECL + '<styleSheet xmlns="' + NS_X + '"><fonts count="' + fonts.length + '">' + fonts.join('') + '</fonts>' +
     '<fills count="' + fills.length + '">' + fills.join('') + '</fills><borders count="' + borders.length + '">' + borders.join('') + '</borders>' +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
@@ -883,7 +901,9 @@ function sheetCauHoi(bc) {
     const cells = khoa.map((k, c) => {
       const v = d[k], giua = COT[c][2] === 'giua';
       if (v != null && typeof v !== 'number') cao = Math.max(cao, soDongChu(v, COT[c][1]));
-      return oXml(cotChu(c) + r0, v, doan ? (giua ? XF.DOAN_GIUA : XF.DOAN) : (giua ? XF.GIUA : XF.CHU), bc);
+      const kieu = vanBan(c) ? (doan ? (giua ? XF.DOAN_GIUA_VB : XF.DOAN_VB) : (giua ? XF.GIUA_VB : XF.CHU_VB))
+        : (doan ? (giua ? XF.DOAN_GIUA : XF.DOAN) : (giua ? XF.GIUA : XF.CHU));
+      return oXml(cotChu(c) + r0, v, kieu, bc);
     }).join('');
     let ht = Math.max(20, cao * 15 + 5);
     if (d.anh) ht = Math.max(ht, Math.ceil((ANH_X.h + 12) * 0.75));
@@ -896,14 +916,15 @@ function sheetCauHoi(bc) {
     dataValidation('Q2:Q1000', { list: MUC_DO, errorTitle: 'Mức độ', error: 'Mức độ là NB, TH, VD hoặc VDC.', promptTitle: 'Mức độ',
       prompt: 'NB – Nhận biết, TH – Thông hiểu, VD – Vận dụng, VDC – Vận dụng cao.' }),
     dataValidation('C2:C1000', { promptTitle: 'Nội dung câu hỏi', prompt: L`Xuống dòng: Alt + Enter. Công thức: $x^2$, $\frac{1}{2}$. Ô điền: [[đáp án]]. Ô chọn: [[sai|*đúng|sai]].` }),
-    dataValidation('E2:L1000', { promptTitle: 'Phương án / ý / cặp ghép', prompt: 'TN, NĐ: phương án. ĐS: các ý a, b, c, d. GHÉP: trái => phải (ô không có => hoặc ghi Nhiễu: x; y là vế phải gây nhiễu).' }),
+    dataValidation('E2:L1000', { promptTitle: 'Phương án / ý / cặp ghép', prompt: 'TN, NĐ: phương án (có thể ghi * trước phương án đúng). ĐS: các ý a, b, c, d. GHÉP: trái => phải; ô không có => hoặc ghi Nhiễu: x; y là vế phải gây nhiễu.' }),
     dataValidation('M2:M1000', { promptTitle: 'Đáp án', prompt: 'TN: B · NĐ: A, C · ĐS: ĐSĐS · TLN: 8/3; 2,67 · SỐ: 12,5 hoặc 12,5 ± 0,1 hoặc 1,5 .. 2 · ĐIỀN, CHỌN, GHÉP: để trống.' })
   ];
   return DECL + '<worksheet xmlns="' + NS_X + '" xmlns:r="' + NS_R + '"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
     '<dimension ref="A1:' + cuoi + (rows.length) + '"/>' +
     '<sheetViews><sheetView tabSelected="1" zoomScale="100" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>' +
     '<selection pane="bottomLeft" activeCell="C2" sqref="C2"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>' +
-    '<cols>' + COT.map(([, w], c) => '<col min="' + (c + 1) + '" max="' + (c + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols>' +
+    '<cols>' + COT.map(([, w, kieu], c) => '<col min="' + (c + 1) + '" max="' + (c + 1) + '" width="' + w + '" style="' +
+      (vanBan(c) ? (kieu === 'giua' ? XF.COT_VB_GIUA : XF.COT_VB) : (kieu === 'giua' ? XF.COT_GIUA : XF.VAN)) + '" customWidth="1"/>').join('') + '</cols>' +
     '<sheetData>' + rows.join('') + '</sheetData>' +
     '<dataValidations count="' + dv.length + '">' + dv.join('') + '</dataValidations>' +
     '<pageMargins left="0.4" right="0.4" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
@@ -921,7 +942,8 @@ function sheetHuongDan(bc) {
   const tron = (ref) => gop.push(ref);
   // Excel tự co dòng không có customHeight nhưng bỏ qua chữ xuống dòng trong ô gộp → dòng có ô gộp phải cố định chiều cao
   const dongGop = (v, xf, ht) => { const r1 = them([[v, xf], ['', xf], ['', xf], ['', xf]], { ht, custom: true }); tron('A' + r1 + ':D' + r1); };
-  const muc = (s) => { them([]); dongGop(s, XF.MUC, 22); };
+  let ngatTrang = 0;   // in ra giấy: mục 4 sang trang mới (tránh tiêu đề mục nằm trơ trọi cuối trang)
+  const muc = (s, ngat) => { const r1 = them([]); if (ngat) ngatTrang = r1; dongGop(s, XF.MUC, 22); };
   const noi = (nhan, v, xfNhan) => { // nhãn ở cột A, nội dung gộp B:D
     const r1 = them([[nhan, xfNhan || XF.NHAN], [v, XF.VAN], ['', XF.VAN], ['', XF.VAN]],
       { ht: Math.max(18, soDongChu(v, RONG[1] + RONG[2] + RONG[3]) * 15 + 4), custom: true });
@@ -937,14 +959,16 @@ function sheetHuongDan(bc) {
 
   dongGop('MẪU NHẬP NGÂN HÀNG CÂU HỎI CANVAS', XF.TEN, 34);
   dongGop(TRUONG + ' · dùng với công cụ ' + CONG_CU, XF.PHU, 20);
-  noi('Cách điền', 'Mỗi dòng ở trang «Câu hỏi» là một câu hỏi. Các dòng ví dụ (dòng nền vàng là đoạn dẫn) cho thấy cách ghi mọi loại câu — ' +
-    'xoá chúng trước khi soạn. Giữ nguyên dòng tiêu đề (có thể đổi thứ tự cột hoặc thêm cột riêng, cột lạ được bỏ qua).');
+  const dongCuoiViDu = dongViDu().length + 1;
+  noi('Cách điền', 'Mỗi dòng ở trang «Câu hỏi» là một câu hỏi. Các dòng 2–' + dongCuoiViDu + ' là ví dụ đủ mọi loại câu (dòng nền vàng là đoạn dẫn): ' +
+    'xem xong thì chọn các dòng đó → chuột phải → Delete (Xoá) — ảnh ví dụ bị xoá theo. Giữ nguyên dòng tiêu đề (đổi thứ tự cột hay thêm cột riêng đều được, cột lạ được bỏ qua).');
 
   muc('1. CÁCH DÙNG');
   noi('Bước 1', 'Mỗi dòng một câu: chọn Loại câu trong danh sách (hoặc để trống để công cụ tự nhận loại), ghi Nội dung, các phương án, Đáp án, Điểm.');
   noi('Bước 2', 'Ghi tên ngân hàng ở cột Ngân hàng (để trống = giữ ngân hàng của dòng trên). Nhiều tên khác nhau → nhiều ngân hàng.');
-  noi('Bước 3', 'Lưu tệp, mở công cụ ' + CONG_CU + ', kéo thả tệp Excel vào (kèm các ảnh ghi ở cột Ảnh nếu có). Soát lại từng câu: câu báo đỏ không được xuất.');
-  noi('Bước 4', 'Bấm Tải gói QTI rồi nhập vào Canvas — New Quizzes: Item Banks → ⋮ → Import Content; Classic Quizzes: Settings → Import Course Content → QTI .zip file.');
+  noi('Bước 3', 'Lưu tệp dạng Excel (.xlsx), mở công cụ ' + CONG_CU + ', kéo thả tệp vào (kèm các ảnh ghi ở cột Ảnh nếu có). Soát lại từng câu: câu báo đỏ không được xuất.');
+  noi('Bước 4', 'Bấm Tải gói QTI rồi làm theo hướng dẫn hiện ngay dưới nút. New Quizzes (khuyên dùng): Ngân Hàng Câu Hỏi (Item Banks) → mở một ngân hàng còn trống → ⋮ → ' +
+    'Import Content. Classic Quizzes: Cài Đặt → Nhập Nội Dung Khóa Học (Settings → Import Course Content) → Tập tin .zip QTI.');
 
   muc('2. CÁC CỘT CỦA TRANG «CÂU HỎI»');
   bang4(['Cột', 'Ý nghĩa', 'Ví dụ', 'Bắt buộc'], [
@@ -952,9 +976,11 @@ function sheetHuongDan(bc) {
     ['Loại câu', 'Chọn trong danh sách (bấm mũi tên ở ô). Để trống thì công cụ tự nhận loại. Xem bảng 3.', TN, 'Không'],
     ['Nội dung câu hỏi', 'Nội dung câu. Xuống dòng trong ô: Alt + Enter. In đậm, nghiêng, gạch chân, chỉ số trên/dưới được giữ nguyên. Công thức gõ LaTeX giữa hai dấu $.',
       L`Giải phương trình $x^2-5x+6=0$`, 'Có'],
-    ['Ảnh', 'Tên tệp ảnh (nhiều ảnh ngăn bằng ;) — khi nạp, kéo thả kèm các ảnh đó. Hoặc dán ảnh thẳng lên trang tính, đặt trên đúng dòng câu hỏi (như câu 2 ví dụ).',
+    ['Ảnh', 'Tên tệp ảnh (nhiều ảnh ngăn bằng ;) — khi nạp, kéo thả kèm các ảnh đó. Hoặc dán ảnh thẳng lên trang tính sao cho góc trên bên trái của ảnh nằm trong dòng câu hỏi ' +
+      '(như câu 2 ví dụ), hoặc Insert → Pictures → Place in Cell (Chèn → Ảnh → Đặt trong ô). Ảnh ở cột A…H thuộc phương án đó, ở cột Lời giải thuộc lời giải.',
       'hinh-cau-3.png', 'Không'],
-    ['A … H', 'TN, NĐ: các phương án. ĐS: các ý a, b, c, d (cột A–D). GHÉP: mỗi ô một cặp “trái => phải”. Có thể đánh dấu * trước phương án đúng thay cho cột Đáp án.',
+    ['A … H', 'TN, NĐ: các phương án. ĐS: các ý a, b, c, d (cột A–D). GHÉP: mỗi ô một cặp “trái => phải”. Có thể đánh dấu * trước phương án đúng thay cho cột Đáp án. ' +
+      'Các cột này và cột Đáp án đã đặt sẵn kiểu Văn bản (Text) để Excel không tự đổi 1/2 thành ngày tháng.',
       '*Hà Nội', 'Tuỳ loại'],
     ['Đáp án', 'Cách ghi theo từng loại câu ở bảng 3.', 'B', 'Tuỳ loại'],
     ['Điểm', 'Điểm của câu (để trống: 1 điểm). Dùng dấu phẩy hoặc dấu chấm.', '0,25', 'Không'],
@@ -968,7 +994,7 @@ function sheetHuongDan(bc) {
   bang4(['Loại câu', 'Cách soạn (cột Nội dung và A–H)', 'Cột Đáp án', 'Trên Canvas'], [
     [TN, 'Phương án ở các cột A–H, đúng một phương án đúng.', 'Một chữ cái: B', 'Multiple Choice'],
     [ND, 'Phương án ở các cột A–H, từ hai phương án đúng trở lên.', 'Các chữ cái: A, C', 'Multiple Answers'],
-    [DS, 'Các ý a, b, c, d ở cột A–D (dạng đề THPT từ 2025).', 'ĐSĐS  hoặc  a-Đ, b-S, c-Đ, d-S', 'Multiple Dropdowns'],
+    [DS, 'Các ý a, b, c, d ở cột A–D (dạng đề THPT từ 2025).', 'ĐSĐS  hoặc  a-Đ, b-S, c-Đ, d-S', 'Multiple Dropdowns (hoặc tách thành các câu Đúng/Sai)'],
     [TLN, 'Không dùng cột A–H.', 'Các cách viết đúng ngăn bằng dấu ; ví dụ 8/3; 2,67', 'Short Answer'],
     [SO, 'Không dùng cột A–H.', '12,5  hoặc  12,5 ± 0,1  hoặc  khoảng 1,5 .. 2', 'Numerical'],
     [DIEN, 'Ô [[đáp án]] trong nội dung; nhiều cách viết: [[8/3|2,67]].', 'Để trống', 'Fill In Multiple Blanks'],
@@ -978,12 +1004,17 @@ function sheetHuongDan(bc) {
     [DOAN, 'Nội dung là đoạn văn / số liệu dùng chung cho các dòng bên dưới, đến dòng ĐOẠN kế tiếp; dòng ĐOẠN ghi “HẾT” để kết thúc.', '—', 'Chèn vào đầu mỗi câu']
   ]);
 
-  muc('4. LƯU Ý');
-  noi('Công thức', L`Gõ LaTeX giữa hai dấu $, ví dụ $\frac{1}{2}$, $\sqrt{x+1}$, $x^2$, $\vec{a}$, $\int_0^1 f(x)\,dx$, $\begin{cases} x+y=3\\ x-y=1 \end{cases}$ — công cụ tự chuyển thành công thức trên Canvas.`);
-  noi('Số thập phân', 'Viết bằng dấu phẩy như thường lệ (2,5). Riêng câu SỐ, khi làm bài trên Canvas học sinh gõ dấu chấm (2.5).');
+  muc('4. LƯU Ý', true);
+  noi('Công thức', L`Gõ LaTeX giữa hai dấu $, ví dụ $\frac{1}{2}$, $\sqrt{x+1}$, $x^2$, $\vec{a}$, $\int_0^1 f(x)\,dx$, $\begin{cases} x+y=3\\ x-y=1 \end{cases}$ — công cụ tự chuyển thành công thức trên Canvas. ` +
+    'Không dùng Equation, Text Box hay Shapes của Excel: công cụ không đọc được (sẽ báo).');
+  noi('Phân số, ngày', 'Ở cột không đặt kiểu Văn bản (Nội dung, Lời giải, Điểm…), gõ riêng 1/2 hay 8/3 thì Excel tự đổi thành ngày tháng và công cụ sẽ báo lỗi: ' +
+    'gõ thêm dấu nháy đơn phía trước (\'1/2) hoặc định dạng ô là Văn bản (Text). Ô định dạng % hay Phân số (Fraction) được đọc như Excel hiển thị.');
+  noi('Số thập phân', 'Viết bằng dấu phẩy như thường lệ (2,5). Câu SỐ: Canvas chỉ hiểu dấu chấm nên học sinh phải gõ 2.5 — hãy nhắc trong đề; ' +
+    'muốn chấm đúng cả 2,5 lẫn 2.5 thì dùng loại TLN.');
   noi('Ảnh', 'Dùng ảnh PNG hoặc JPG. Không dùng ảnh EMF, WMF, SVG — Canvas không hiển thị được.');
-  noi('Ô gộp', 'Ô gộp ở các cột Loại câu, Điểm, Ngân hàng, Mức độ, Chủ đề được hiểu cho mọi dòng trong vùng gộp.');
+  noi('Ô gộp', 'Ô gộp ở các cột Loại câu, Điểm, Ngân hàng, Mức độ, Chủ đề được hiểu cho mọi dòng trong vùng gộp. Không gộp ô ở cột Nội dung, A…H, Đáp án.');
   noi('Đúng/Sai', 'Canvas chấm câu Đúng/Sai theo từng ý (mỗi ý đúng = điểm câu ÷ số ý); thang 0,1 – 0,25 – 0,5 – 1 điểm của Bộ GD&ĐT không áp dụng được.');
+  noi('Lưu tệp', 'Lưu dạng Excel Workbook (.xlsx). Tệp .xls cũ, .csv hay Google Sheets: mở rồi lưu (hoặc tải về) dạng .xlsx trước khi nạp.');
 
   const xmlRows = rows.map((d) => dongXml(d.r, { ht: d.ht, custom: !!d.custom,
     cells: d.cells.map(([v, s], c) => oXml(cotChu(c) + d.r, v, s, bc)).join('') }));
@@ -993,19 +1024,24 @@ function sheetHuongDan(bc) {
     '<sheetData>' + xmlRows.join('') + '</sheetData>' +
     '<mergeCells count="' + gop.length + '">' + gop.map((g) => '<mergeCell ref="' + g + '"/>').join('') + '</mergeCells>' +
     '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
-    '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/></worksheet>';
+    '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>' +
+    (ngatTrang ? '<rowBreaks count="1" manualBreakCount="1"><brk id="' + ngatTrang + '" max="16383" man="1"/></rowBreaks>' : '') + '</worksheet>';
 }
 
+// ảnh ví dụ neo hai ô "di chuyển và đổi cỡ theo ô" (twoCell): giáo viên xoá các dòng ví dụ thì Excel xoá luôn ảnh.
+// (oneCellAnchor = "di chuyển, không đổi cỡ": xoá dòng thì ảnh trôi lên dòng 2 và bị gán nhầm cho câu đầu tiên giáo viên gõ — đã thử Excel 365)
 function drawingXml() {
-  const emu = (px) => px * 9525, cx = emu(ANH_X.w), cy = emu(ANH_X.h);
-  return DECL + '<xdr:wsDr xmlns:xdr="' + NS_XDR + '" xmlns:a="' + NS_A + '"><xdr:oneCellAnchor>' +
-    '<xdr:from><xdr:col>' + ANH_X.col + '</xdr:col><xdr:colOff>' + emu(6) + '</xdr:colOff><xdr:row>' + (ANH_X.row - 1) + '</xdr:row><xdr:rowOff>' + emu(6) + '</xdr:rowOff></xdr:from>' +
-    '<xdr:ext cx="' + cx + '" cy="' + cy + '"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="Hình 1" descr="' +
+  const emu = (px) => px * 9525, cx = emu(ANH_X.w), cy = emu(ANH_X.h), le = 6;
+  const diem = (ten, cot, dx, hang, dy) => '<xdr:' + ten + '><xdr:col>' + cot + '</xdr:col><xdr:colOff>' + emu(dx) + '</xdr:colOff><xdr:row>' + hang +
+    '</xdr:row><xdr:rowOff>' + emu(dy) + '</xdr:rowOff></xdr:' + ten + '>';
+  return DECL + '<xdr:wsDr xmlns:xdr="' + NS_XDR + '" xmlns:a="' + NS_A + '"><xdr:twoCellAnchor editAs="twoCell">' +
+    diem('from', ANH_X.col, le, ANH_X.row - 1, le) + diem('to', ANH_X.col, le + ANH_X.w, ANH_X.row - 1, le + ANH_X.h) +
+    '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="Hình 1" descr="' +
     x('Đồ thị hàm số y = f(x): đi lên đến điểm (−1; 2), đi xuống đến điểm (1; −2) rồi đi lên.') + '"/>' +
     '<xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>' +
     '<xdr:blipFill><a:blip xmlns:r="' + NS_R + '" r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>' +
     '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>' +
-    '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
+    '</xdr:pic><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>';
 }
 
 async function taoXlsx(opts) {

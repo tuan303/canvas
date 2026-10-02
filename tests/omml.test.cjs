@@ -156,6 +156,37 @@ test('MathML sinh ra là XML hợp lệ, đối số luôn đúng 1 phần tử'
   assert.strictEqual(bo(mm('<m:sSup><m:e/><m:sup>' + r('2') + '</m:sup></m:sSup>')), '<msup><mrow></mrow><mn>2</mn></msup>');
 });
 
+test('OMath do Word thật ghi (fixture word-*/office-*.docx: gõ tuyến tính rồi BuildUp) → MathML hợp lệ, không sót thẻ m:, chữ thuần không rỗng', async () => {
+  const zip = require('../js/zip.js');
+  const thu = path.join(__dirname, 'fixtures', 'docx');
+  const ten = fs.readdirSync(thu).filter((x) => /^(word|office)-.*\.docx$/.test(x));
+  let n = 0;
+  for (const t of ten) {
+    const z = await zip.readZip(new Uint8Array(fs.readFileSync(path.join(thu, t))));
+    if (!/Microsoft Office Word/.test(core.utf8Decode(z['docProps/app.xml'] || new Uint8Array(0)))) continue;
+    const x = core.parseXml(core.utf8Decode(z['word/document.xml']));
+    const ds2 = core.findAll(x, (e) => e.name === 'm:oMathPara' || (e.name === 'm:oMath' && !core.find(x, (p) => p.name === 'm:oMathPara' && core.findAll(p, 'm:oMath').includes(e))));
+    ds2.forEach((e) => {
+      const ml = omml.toMathML(e);
+      n++;
+      assert.ok(ml.indexOf(MATH.slice(0, -1)) === 0 && /<\/math>$/.test(ml), t + ': ' + ml);
+      assert.ok(!/<\/?m:|merror/.test(ml), t + ': ' + ml);
+      const cay = core.parseXml(ml);
+      const kiem = (nut) => {
+        if (nut.type !== 'el') return;
+        const k = core.children(nut).length;
+        if (['mfrac', 'msup', 'msub', 'mroot', 'munder', 'mover'].includes(nut.name)) assert.strictEqual(k, 2, t + ': ' + nut.name + ' phải có 2 con — ' + ml);
+        if (['msubsup', 'munderover'].includes(nut.name)) assert.strictEqual(k, 3, t + ': ' + nut.name + ' phải có 3 con — ' + ml);
+        core.children(nut).forEach(kiem);
+      };
+      kiem(cay);
+      assert.ok(omml.toText(e).trim().length > 0, t + ': chữ thuần rỗng');
+    });
+  }
+  assert.ok(n >= 20, 'chỉ thấy ' + n + ' công thức Word');
+  console.log('       (' + n + ' công thức do Word ghi)');
+});
+
 test('nạp kiểu trình duyệt (self.NH.omml)', () => {
   const vm = require('vm');
   const ctx = { self: {}, TextEncoder, TextDecoder };

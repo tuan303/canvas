@@ -236,6 +236,73 @@
     return kq;
   }
 
+  /* ---------- file đáp án riêng (HDC / KEY / ĐÁP ÁN) ↔ file đề ---------- */
+
+  // Từ quá chung trong tên file đề, không dùng để so khớp ("Đề thi", "Kiểm tra", "chưa đáp án"…)
+  var TU_CHUNG = { de: 1, thi: 1, kiem: 1, tra: 1, bai: 1, chua: 1, cau: 1, hoi: 1, file: 1, ban: 1, va: 1 };
+  function tuKhoaTen(goc) {
+    var kq = [];
+    String(goc || '').split(/[.\s_\-]+/).forEach(function (t) { if (t && !TU_CHUNG[t] && kq.indexOf(t) < 0) kq.push(t); });
+    return kq;
+  }
+
+  /*
+   * Chọn file đề cho một file đáp án theo tên: dsDe = [{id, name, …}] (file đề đã/đang đọc), dx = module docx
+   * (answerKeyBaseName bỏ các chữ HDC/KEY/ĐÁP ÁN/Hướng dẫn chấm…).
+   *  1) tên gốc trùng hẳn ('26.12.HH.KS.HDC.0301' ↔ '26.12.HH.KS.0301', 'X_KEY' ↔ 'X') — chỉ nhận khi duy nhất;
+   *  2) không thì so từ khoá (bỏ từ chung): phần chung / tập nhỏ hơn ≥ 0,8, có từ chứa chữ cái, hơn hẳn các đề khác;
+   *  3) không thì nếu chỉ có đúng một file đề (và choMotDe khác false) → file đó. Mơ hồ → null (giáo viên tự chọn).
+   *  Giao diện chỉ cho bước 3 khi file đề nạp cùng lần hoặc trước file đáp án — file đề tên khác nạp SAU có thể là đề khác.
+   */
+  function chonDeChoKey(tenKey, dsDe, dx, choMotDe) {
+    if (!dx || typeof dx.answerKeyBaseName !== 'function' || !Array.isArray(dsDe) || !dsDe.length) return null;
+    var goc = dx.answerKeyBaseName(tenKey);
+    var trung = dsDe.filter(function (d) { return goc && dx.answerKeyBaseName(d.name) === goc; });
+    if (trung.length) return trung.length === 1 ? trung[0] : null;
+    var a = tuKhoaTen(goc), tot = null, diemTot = 0, hoa = false;
+    dsDe.forEach(function (d) {
+      var b = tuKhoaTen(dx.answerKeyBaseName(d.name));
+      if (!a.length || !b.length) return;
+      var chung = a.filter(function (t) { return b.indexOf(t) >= 0; });
+      if (!chung.some(function (t) { return t.length >= 2 && /[a-z]/.test(t); })) return;
+      var diem = chung.length / Math.min(a.length, b.length);
+      if (diem > diemTot) { tot = d; diemTot = diem; hoa = false; } else if (diem === diemTot) hoa = true;
+    });
+    if (tot && diemTot >= 0.8 && !hoa) return tot;
+    return dsDe.length === 1 && choMotDe !== false ? dsDe[0] : null;
+  }
+
+  // Áp file đáp án (kết quả parseAnswerKey / parseDocx keyOnly) vào các mục ngân hàng của một file đề: câu được sửa
+  // tại chỗ (docx.applyAnswerKey tự kiểm tra lại câu), xoá bộ nhớ đệm lỗi của mục để bước 2 soát lại.
+  function apDapAnChoMuc(mucs, key, dx) {
+    var ds = (mucs || []).filter(function (e) { return e && e.bank; });
+    var r = dx.applyAnswerKey(ds.map(function (e) { return e.bank; }), key);
+    ds.forEach(function (e) { e._vd = {}; });
+    return r;
+  }
+
+  /* ---------- lớp bảo vệ thứ hai khi hiện HTML câu hỏi (DOM do app.js dựng) ---------- */
+
+  // Thẻ bị bỏ cả nội dung: chạy mã / nhúng / đổi trang / SVG hoạt hoạ (animate/set đổi được href thành javascript:)
+  var THE_CAM = {
+    script: 1, style: 1, iframe: 1, frame: 1, frameset: 1, object: 1, embed: 1, link: 1, meta: 1, base: 1, form: 1, noscript: 1,
+    template: 1, applet: 1, svg: 1, animate: 1, set: 1, animatemotion: 1, animatetransform: 1, foreignobject: 1, use: 1
+  };
+  var THUOC_TINH_URL = { href: 1, src: 1, action: 1, formaction: 1, 'xlink:href': 1, background: 1, poster: 1 };
+  // URL chạy mã: trình duyệt bỏ ký tự điều khiển/khoảng trắng trong scheme ("java\tscript:", "\x01javascript:")
+  function urlNguyHiem(v) {
+    var s = String(v == null ? '' : v).replace(/[\x00-\x20\x7f]/g, '').toLowerCase();
+    return /^(javascript|vbscript|data):/.test(s) && !/^data:image\/(png|jpe?g|gif);/.test(s);
+  }
+  // Thuộc tính phải bỏ: on*, id/name (chiếm id của giao diện, vd "vung-thong-bao"), form/srcdoc/srcset/ping/formaction,
+  // URL chạy mã, style có expression()/url(javascript:)
+  function thuocTinhNguyHiem(ten, giaTri) {
+    var n = String(ten || '').toLowerCase();
+    if (n.slice(0, 2) === 'on' || /^(id|name|form|srcdoc|srcset|ping|formaction)$/.test(n)) return true;
+    if (THUOC_TINH_URL[n] && urlNguyHiem(giaTri)) return true;
+    return n === 'style' && /expression\s*\(|url\s*\(\s*['"]?\s*(javascript|vbscript)/i.test(String(giaTri));
+  }
+
   /* ---------- các bước nhập vào Canvas (nhãn giao diện Canvas tiếng Việt + tiếng Anh) ---------- */
 
   function ui(vi, en) { return '<span class="ui">' + vi + '</span>' + (en ? ' <span class="en">(' + en + ')</span>' : ''); }
@@ -263,20 +330,34 @@
     return {
       tieuDe: 'Nhập vào Item Bank – New Quizzes',
       buoc: [
-        'Trong khoá học, mở ' + ui('Ngân Hàng Câu Hỏi', 'Item Banks') + ' ở thanh điều hướng bên trái. Đừng mở Item Banks từ bên trong một bài kiểm tra — ở đó không có nút nhập.',
-        'Bấm ' + ui('+ Add Bank', 'thêm ngân hàng') + ', đặt tên (nên giống tên ngân hàng ở bước 2), đánh dấu Share nếu muốn chia sẻ, rồi ' + ui('Create Bank') + '.',
-        'Mở ngân hàng vừa tạo. <b>Ngân hàng phải còn trống</b> — ngân hàng đã có câu hỏi sẽ không có mục nhập.',
-        'Bấm nút ' + ui('⋮', 'Options') + ' → ' + ui('Import Content', 'nhập nội dung') + '.',
-        'Kéo thả <b>file .zip của đúng ngân hàng này</b> (mỗi ngân hàng một file, để nguyên không giải nén) → ' + ui('Import') + '. Chờ thanh trạng thái chạy xong.',
+        'Trong khoá học, bấm ' + ui('Ngân Hàng Câu Hỏi', 'Item Banks') + ' ở thanh điều hướng bên trái của khoá học. Đừng mở Item Banks từ bên trong một bài kiểm tra — ở đó không có mục nhập.',
+        'Bấm ' + ui('+ Add Bank', 'thêm ngân hàng') + ', đặt tên giống tên ngân hàng ở bước 2, rồi bấm ' + ui('Create Bank') + '.',
+        'Mở ngân hàng <b>vừa tạo</b>. <b>Ngân hàng phải còn trống</b> — ngân hàng đã có câu hỏi sẽ không có mục nhập.',
+        'Bấm nút ' + ui('⋮', 'Options') + ' ở góc trên ngân hàng → ' + ui('Import Content', 'nhập nội dung') + '.',
+        'Chọn (hoặc kéo thả) <b>file .zip của đúng ngân hàng này</b> — mỗi ngân hàng một file, để nguyên không giải nén — rồi bấm ' + ui('Import') + '. Chờ thanh trạng thái chạy xong.',
         'Kiểm tra số câu, công thức và ảnh. Dùng trong bài kiểm tra: New Quiz → ' + ui('Build') + ' → biểu tượng Item Banks → thêm toàn bộ hoặc rút ngẫu nhiên N câu.'
       ],
       ghiChu: [
-        'Tiếng Việt của Canvas gọi <b>cả hai</b> loại là "Ngân Hàng Câu Hỏi" (ngân hàng Classic có thêm "(Bản cũ)"). Ở đây là Item Bank của New Quizzes. Các nút bên trong New Quizzes hiện bằng tiếng Anh như trên.',
-        'Item Bank không ghi đè khi nhập lại: muốn cập nhật sau khi sửa đề, tạo một ngân hàng trống mới (hoặc xoá hết câu cũ) rồi nhập lại.',
+        'Tiếng Việt của Canvas gọi <b>cả hai</b> loại là "Ngân Hàng Câu Hỏi": ngân hàng của Classic Quizzes hiện là "Ngân Hàng Câu Hỏi (Bản cũ)", còn Item Bank của New Quizzes chỉ là "Ngân Hàng Câu Hỏi" (một vài chỗ ghi "Ngân Hàng Mục"). Gói này dành cho Item Bank; các nút bên trong New Quizzes hiện bằng tiếng Anh như trên.',
+        '<b>Một file .zip = một ngân hàng.</b> Item Bank không ghi đè khi nhập lại: muốn cập nhật sau khi sửa đề, tạo một ngân hàng trống mới (hoặc xoá hết câu cũ) rồi nhập lại.',
+        'Dùng chung: trong ngân hàng bấm ' + ui('⋮') + ' → ' + ui('Share') + ' để chia sẻ cho đồng nghiệp hoặc cho khoá học khác (ngân hàng được chia sẻ hiện ở bộ lọc ' + ui('Shared with Me') + ' / ' + ui('Shared with Courses') + '), không phải nhập lại ở từng khoá học.',
         'Cách khác: nhập thẳng vào một New Quiz <b>mới, còn trống</b>: ' + ui('Câu Hỏi Kiểm Tra', 'Quizzes') + ' → ' + ui('+ Thêm Câu Hỏi Kiểm Tra', 'Add Quiz') + ' → New Quizzes → ' + ui('Xây Dựng', 'Build') + ' → ' + ui('⋮') + ' → ' + ui('Import Content') + '. Bài kiểm tra lấy tên file làm tiêu đề.',
-        'Lần đầu dùng: nhập thử một gói nhỏ để chắc chắn công thức (MathML) và ảnh hiển thị đúng trên New Quizzes của trường; nếu công thức không hiện, xuất lại với tuỳ chọn "Ảnh công thức của Canvas".'
+        'Lần đầu dùng: nhập thử một gói nhỏ để chắc chắn công thức (MathML), ảnh, câu "Chọn từ danh sách" và "Điền khuyết" hiển thị đúng trên New Quizzes của trường; nếu công thức không hiện, xuất lại với tuỳ chọn "Ảnh công thức của Canvas".'
       ]
     };
+  }
+
+  // Địa chỉ Canvas của trường từ cấu hình máy chủ (op=config → base) → { origin, host } hoặc null
+  function hostCanvas(base) {
+    if (typeof base !== 'string' || !/^https?:\/\//i.test(base)) return null;
+    try { var u = new URL(base); return { origin: u.origin, host: u.host }; } catch (e) { return null; }
+  }
+  // Trang của khoá học trên Canvas: 'quizzes' (danh sách bài kiểm tra, gồm New Quiz), 'question_banks' (ngân hàng Classic),
+  // 'content_migrations' (trang Nhập Nội Dung Khóa Học — các lần nhập và vấn đề của từng lần)
+  function linkCanvas(base, courseId, trang) {
+    var h = hostCanvas(base);
+    if (!h || !/^\d{1,20}$/.test(String(courseId)) || !/^(quizzes|question_banks|content_migrations)$/.test(trang)) return '';
+    return h.origin + '/courses/' + courseId + '/' + trang;
   }
 
   var LOI_DANG_NHAP = {
@@ -292,7 +373,9 @@
     fmtSo: fmtSo, docDiem: docDiem, kieuAnh: kieuAnh, laZip: laZip, phanLoaiFile: phanLoaiFile, phanLoaiZip: phanLoaiZip,
     tachGoi: tachGoi, duoiMsg: duoiMsg, anhTrongHtml: anhTrongHtml, vanDeAnh: vanDeAnh, vanDeCau: vanDeCau, demMuc: demMuc,
     taoMuc: taoMuc, vdCua: vdCua, coLoi: coLoi, duocXuat: duocXuat, tomTatMuc: tomTatMuc,
-    banksDeXuat: banksDeXuat, locVanDeXuat: locVanDeXuat, cacBuocNhap: cacBuocNhap
+    banksDeXuat: banksDeXuat, locVanDeXuat: locVanDeXuat, cacBuocNhap: cacBuocNhap,
+    chonDeChoKey: chonDeChoKey, apDapAnChoMuc: apDapAnChoMuc, urlNguyHiem: urlNguyHiem, thuocTinhNguyHiem: thuocTinhNguyHiem,
+    THE_CAM: THE_CAM, linkCanvas: linkCanvas, hostCanvas: hostCanvas
   };
 
   if (laNode || typeof document === 'undefined') return thuan;
@@ -355,6 +438,7 @@
   /* ---------- trạng thái ---------- */
 
   var KHOA_TUY_CHON = 'nh-qti-tuy-chon';
+  var KHOA_DICH_GUI = 'nh-canvas-dich';
   var S = {
     nguon: [],          // {id, name, size, kind, bytes, trangThai:'cho'|'dang'|'xong'|'loi', issues, soAnh, boQua}
     muc: [],            // mục ngân hàng (taoMuc) + .nguonId, .viTri, .anhUrl
@@ -365,9 +449,16 @@
     daXuat: false,
     thayDoi: false,
     demNguon: 0,
+    demLo: 0,
     hangDoi: Promise.resolve(),
-    cv: { cfg: null, user: null, khoaHoc: [], dangGui: false, ctrl: null }
+    cv: { cfg: null, user: null, khoaHoc: [], dangGui: false, ctrl: null, dich: docDichGui() }
   };
+
+  // Đích gửi thẳng: 'classic' (Question Bank – Classic, mặc định) | 'newquiz' (chuyển sang New Quizzes khi nhập)
+  function docDichGui() {
+    try { return root.localStorage.getItem(KHOA_DICH_GUI) === 'newquiz' ? 'newquiz' : 'classic'; } catch (e) { return 'classic'; }
+  }
+  function luuDichGui() { try { root.localStorage.setItem(KHOA_DICH_GUI, S.cv.dich); } catch (e) { /* bỏ qua */ } }
 
   function docTuyChon() {
     var md = { target: 'itembank', tfMode: 'dropdowns', stimulus: 'each', math: 'mathml', includeFeedback: true };
@@ -404,19 +495,14 @@
 
   /* ---------- làm sạch HTML trước khi hiện (nội dung đã qua bộ đọc; đây là lớp bảo vệ thứ hai) ---------- */
 
-  var THE_CAM = { script: 1, style: 1, iframe: 1, frame: 1, frameset: 1, object: 1, embed: 1, link: 1, meta: 1, base: 1, form: 1, noscript: 1, template: 1, applet: 1 };
-  var THUOC_TINH_URL = { href: 1, src: 1, action: 1, formaction: 1, 'xlink:href': 1, background: 1, poster: 1 };
-
   function lamSach(goc) {
     var ds = goc.querySelectorAll('*');
     for (var i = 0; i < ds.length; i++) {
       var el = ds[i], ten = String(el.localName || '').toLowerCase();
       if (THE_CAM[ten]) { if (el.parentNode) el.parentNode.removeChild(el); continue; }
       for (var j = el.attributes.length - 1; j >= 0; j--) {
-        var at = el.attributes[j], n = at.name.toLowerCase(), v = at.value;
-        if (n.slice(0, 2) === 'on') el.removeAttribute(at.name);
-        else if (THUOC_TINH_URL[n] && /^\s*(javascript|vbscript|data(?!:image\/(png|jpe?g|gif);))/i.test(v)) el.removeAttribute(at.name);
-        else if (n === 'style' && /expression\s*\(|url\s*\(\s*['"]?\s*javascript/i.test(v)) el.removeAttribute(at.name);
+        var at = el.attributes[j];
+        if (thuocTinhNguyHiem(at.name, at.value)) el.removeAttribute(at.name);
       }
       if (ten === 'a') { el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener noreferrer'); }
     }
@@ -658,6 +744,7 @@
   function veFile() {
     var box = rong($('ds-file'));
     S.nguon.forEach(function (ng) {
+      if (ng.laKey) { box.appendChild(dongKey(ng)); return; }
       var mucs = S.muc.filter(function (e) { return e.nguonId === ng.id; });
       var soCau = mucs.reduce(function (s, e) { return s + (e.bank.questions || []).length; }, 0);
       var kc = { docx: 'k-docx', xlsx: 'k-xlsx', scorm: 'k-scorm', image: 'k-img', images: 'k-img', goi: 'k-img' }[ng.kind] || 'k-unknown';
@@ -677,13 +764,65 @@
         h('div', null, h('div', { class: 'file-name', text: ng.name }), meta),
         h('div', { class: 'file-act' }, h('button', { type: 'button', class: 'btn btn-sm btn-danger-ghost', 'data-bo-nguon': ng.id,
           'aria-label': 'Bỏ file ' + ng.name, disabled: ng.trangThai === 'dang' || ng.trangThai === 'cho' }, icon('x'), 'Bỏ')));
+      // file đề có tên kiểu "…HDC…/…KEY…/Đáp án…" (không phải "…chưa đáp án…") nhưng đọc ra câu hỏi → cho giáo viên
+      // chuyển thành file đáp án (vd hướng dẫn chấm chỉ có lời giải tự luận, bộ đọc không tự nhận ra)
+      if (ng.kind === 'docx' && ng.trangThai === 'xong' && ng.bytes && NH.docx && NH.docx.isAnswerKeyName && NH.docx.isAnswerKeyName(ng.name) &&
+          !/(chua|khong)[\s._-]*(co[\s._-]*)?dap[\s._-]*an/.test(core.slugAscii(ng.name).replace(/_/g, ' '))) {
+        row.lastChild.appendChild(h('button', { type: 'button', class: 'btn btn-sm btn-outline', 'data-lam-key': ng.id,
+          title: 'Đọc file này như file đáp án / hướng dẫn chấm rồi điền vào file đề' }, 'Đây là file đáp án'));
+      }
       var vd = (ng.issues || []).slice();
+      (ng.tuKey || []).forEach(function (k) { vd.push(core.newIssue('info', 'Đáp án từ "' + k.ten + '": ' + tomTatKey(k.r))); });
       (ng.boQua || []).slice(0, 8).forEach(function (b) { vd.push(core.newIssue('info', 'Bỏ qua ' + b.path + ': ' + b.lyDo)); });
       if ((ng.boQua || []).length > 8) vd.push(core.newIssue('info', '… và ' + (ng.boQua.length - 8) + ' file khác bị bỏ qua'));
       var ds = dsVanDe(vd);
       if (ds) row.appendChild(ds);
       box.appendChild(row);
     });
+  }
+
+  function tomTatKey(r) {
+    if (!r) return '';
+    var t = 'khớp ' + r.matched + ' câu — điền ' + r.filled + ', trùng ' + r.same + ', khác đề ' + r.conflicts;
+    if (r.mismatched) t += ', không khớp phương án ' + r.mismatched;
+    return t;
+  }
+
+  // File đề có thể nhận đáp án: Word/Excel/SCORM đã đọc xong, không phải file đáp án
+  function dsDeChoKey(caDangDoc) {
+    return S.nguon.filter(function (n) {
+      return !n.laKey && /^(docx|xlsx|scorm)$/.test(n.kind) && (caDangDoc ? n.trangThai !== 'loi' : n.trangThai === 'xong');
+    });
+  }
+
+  // Dòng của file đáp án: số đáp án đọc được, chọn file đề để điền, kết quả điền
+  function dongKey(ng) {
+    var dang = ng.trangThai === 'dang' || ng.trangThai === 'cho';
+    var meta = h('div', { class: 'file-meta' }, h('span', { text: 'File đáp án · ' + coKichThuoc(ng.size) }));
+    if (dang) meta.appendChild(h('span', null, h('span', { class: 'spinner', 'aria-hidden': 'true' }), ' Đang điền đáp án…'));
+    else meta.appendChild(h('span', { class: 'status-ok', text: ((ng.key && ng.key.count) || 0) + ' đáp án' }));
+    var row = h('div', { class: 'file-row is-key' },
+      h('span', { class: 'file-ic k-key', 'aria-hidden': 'true', text: 'ĐA' }),
+      h('div', null, h('div', { class: 'file-name', text: ng.name }), meta),
+      h('div', { class: 'file-act' }, h('button', { type: 'button', class: 'btn btn-sm btn-danger-ghost', 'data-bo-nguon': ng.id,
+        'aria-label': 'Bỏ file ' + ng.name, disabled: dang }, icon('x'), 'Bỏ')));
+    var de = dsDeChoKey(false), idSel = 'key-dich-' + ng.id;
+    var sel = h('select', { class: 'select', id: idSel, 'data-key-dich': ng.id, disabled: dang || !de.length },
+      h('option', { value: '', text: de.length ? '— Không điền vào đề nào —' : 'Chưa có file đề — hãy nạp file đề' }),
+      de.map(function (d) { return h('option', { value: d.id, text: d.name }); }));
+    sel.value = ng.dich && de.some(function (d) { return d.id === ng.dich; }) ? ng.dich : '';
+    row.appendChild(h('div', { class: 'key-pick' }, h('label', { for: idSel, text: 'Điền đáp án vào file đề' }), sel));
+    var vd = (ng.issues || []).slice();
+    if (ng.ketQua) {
+      vd.unshift(core.newIssue(ng.ketQua.r.matched ? 'info' : 'warn', 'Đã áp vào "' + ng.ketQua.deTen + '": ' + tomTatKey(ng.ketQua.r) +
+        (ng.ketQua.r.conflicts ? ' — câu khác đề giữ đáp án trong đề, có cảnh báo ở bước 2' : '')));
+      vd = vd.concat((ng.ketQua.r.issues || []).filter(function (i) { return i.level !== 'info'; }));
+    } else if (!dang && de.length && !ng.dich) {
+      vd.unshift(core.newIssue('warn', ng.dich === '' ? 'Chưa điền vào file đề nào.' : 'Chưa tự ghép được với file đề (tên file khác nhau) — chọn file đề ở ô trên.'));
+    }
+    var ds = dsVanDe(vd);
+    if (ds) row.appendChild(ds);
+    return row;
   }
 
   /* ---------- vẽ bước 2 ---------- */
@@ -845,9 +984,18 @@
     box.appendChild(h('div', { class: 'howto' },
       h('div', { class: 'howto-head' }, icon('info'), h('h3', { text: 'Cách nhập: ' + b.tieuDe })),
       h('div', { class: 'howto-body' },
+        goiYCanvasTruong(),
         h('ol', { class: 'steps-list' }, b.buoc.map(function (s) { return h('li', { html: s }); })),
         b.ghiChu.map(function (g) { return h('div', { class: 'notice n-info', style: 'margin:12px 0 0' }, icon('info'), h('div', { html: g })); }),
         h('p', { class: 'nho', style: 'margin:12px 0 0' }, h('a', { href: 'huong-dan.html#nhap-canvas', target: '_blank', rel: 'noopener', text: 'Xem hướng dẫn chi tiết và cách xử lý sự cố' })))));
+  }
+
+  // "Canvas của trường: 4015.instructure.com" — chỉ khi máy chủ trung gian có cấu hình CANVAS_BASE_URL
+  function goiYCanvasTruong() {
+    var hc = hostCanvas(S.cv.cfg && S.cv.cfg.base);
+    if (!hc) return null;
+    return h('p', { class: 'cv-host' }, icon('canvas'), 'Canvas của trường: ',
+      h('a', { href: hc.origin, target: '_blank', rel: 'noopener noreferrer', text: hc.host }));
   }
 
   function taiVe(bytes, ten) {
@@ -993,8 +1141,9 @@
     });
   }
 
+  // lo = số thứ tự lần nạp (mỗi lần thả/chọn file một số; file trong zip cùng lần với zip)
   function taoNguon(name, bytes) {
-    return { id: 'n' + (++S.demNguon), name: name, size: bytes ? bytes.length : 0, bytes: bytes, kind: '', trangThai: 'cho', issues: [] };
+    return { id: 'n' + (++S.demNguon), name: name, size: bytes ? bytes.length : 0, bytes: bytes, kind: '', trangThai: 'cho', issues: [], lo: S.demLo };
   }
 
   // Nạp một loạt file (mỗi phần tử {name, bytes}); xếp hàng để hai lần thả file không chen nhau
@@ -1006,6 +1155,7 @@
   }
 
   async function napLoat(ds) {
+    S.demLo++;
     var moi = ds.map(function (f) { var ng = taoNguon(f.name, f.bytes); S.nguon.push(ng); return ng; });
     veFile();
     var coAnhMoi = false, soMucTruoc = S.muc.length, i;
@@ -1096,11 +1246,107 @@
       r = { banks: [], issues: [core.newIssue('error', 'Không đọc được file: ' + (e && e.message || e))] };
     }
     ng.issues = Array.isArray(r.issues) ? r.issues : [];
+    if (r.keyOnly && r.key) {
+      // file chỉ có đáp án (HDC / KEY / ĐÁP ÁN): không có ngân hàng — dùng để điền đáp án cho file đề cùng tên
+      ganNganHang(ng, []);
+      if (!ng.laKey) { ng.laKey = true; ng.dich = undefined; }
+      ng.key = r.key;
+      ng.ketQua = null;
+      ng.trangThai = 'xong';
+      boKeyKhoiDe(ng.id);
+      ghepDapAn();
+      return;
+    }
+    ng.laKey = false;
     ganNganHang(ng, Array.isArray(r.banks) ? r.banks : []);
     ng.trangThai = (r.banks || []).length ? 'xong' : 'loi';
     if (ng.trangThai === 'loi' && !ng.issues.some(function (i) { return i.level === 'error'; })) {
       ng.issues.push(core.newIssue('error', 'Không tìm thấy câu hỏi nào trong file.'));
     }
+    // đọc lại (thêm ảnh, đổi file đáp án…) → áp lại các file đáp án đã gán cho file đề này
+    ng.tuKey = [];
+    if (ng.trangThai === 'xong') S.nguon.forEach(function (k) { if (k.laKey && k.key && k.dich === ng.id) apKey(k, ng); });
+    ghepDapAn();
+  }
+
+  function nguonTheoId(id) { for (var i = 0; i < S.nguon.length; i++) if (S.nguon[i].id === id) return S.nguon[i]; return null; }
+
+  // Áp một file đáp án vào mọi ngân hàng của một file đề; ghi kết quả lên cả hai dòng file
+  function apKey(k, de) {
+    var mucs = S.muc.filter(function (e) { return e.nguonId === de.id; });
+    var r;
+    try { r = apDapAnChoMuc(mucs, k.key, NH.docx); } catch (e) {
+      r = { matched: 0, filled: 0, same: 0, conflicts: 0, mismatched: 0, unused: [], issues: [core.newIssue('error', 'Không điền được đáp án: ' + (e && e.message || e))] };
+    }
+    k.ketQua = { deId: de.id, deTen: de.name, r: r };
+    de.tuKey = (de.tuKey || []).filter(function (x) { return x.id !== k.id; }).concat([{ id: k.id, ten: k.name, r: r }]);
+    S.thayDoi = true;
+    if (r.filled) thongBao('Đã điền ' + r.filled + ' đáp án từ "' + k.name + '" vào "' + de.name + '".', 'ok');
+    return r;
+  }
+
+  // Ghép tự động các file đáp án chưa có đích (tên gốc trùng / gần trùng / chỉ có một file đề).
+  // Đề ứng viên tính cả file còn đang chờ đọc; ứng viên chưa đọc xong → đợi lần gọi sau (cuối mỗi lần đọc file).
+  function ghepDapAn() {
+    if (!NH.docx || typeof NH.docx.applyAnswerKey !== 'function') return;
+    S.nguon.forEach(function (k) {
+      if (!k.laKey || !k.key || k.dich !== undefined || k.trangThai !== 'xong') return;
+      var ds = dsDeChoKey(true);
+      // "chỉ có một file đề" chỉ áp khi đề đó nạp cùng lần hoặc trước file đáp án
+      var de = chonDeChoKey(k.name, ds, NH.docx, ds.length === 1 && (ds[0].lo || 0) <= (k.lo || 0));
+      if (!de || de.trangThai !== 'xong') return;
+      k.dich = de.id;
+      apKey(k, de);
+    });
+  }
+
+  // File đề bị bỏ / đổi thành file đáp án → các file đáp án đang trỏ vào nó trở về "chưa có đích"
+  function boKeyKhoiDe(deId) {
+    S.nguon.forEach(function (k) { if (k.laKey && k.dich === deId) { k.dich = undefined; k.ketQua = null; } });
+  }
+
+  // Giáo viên chọn lại file đề cho một file đáp án: đọc lại đề cũ (bỏ đáp án đã điền, giữ tên/điểm/câu bỏ chọn đã sửa),
+  // rồi điền vào đề mới
+  function doiDichKey(kId, moi) {
+    return xepHang(async function () {
+      var k = nguonTheoId(kId);
+      if (!k || !k.laKey || k.dich === moi) { veFile(); return; }   // vẽ lại để mở khoá ô chọn
+      var cu = k.dich ? nguonTheoId(k.dich) : null;
+      k.dich = moi;
+      k.ketQua = null;
+      if (cu) await phanTich(cu);
+      var de = moi ? nguonTheoId(moi) : null;
+      if (de && de.trangThai === 'xong' && !de.laKey) apKey(k, de);
+      veLai();
+    });
+  }
+
+  // File Word không tự nhận ra là file đáp án (vd hướng dẫn chấm chỉ có lời giải) → đọc lại như file đáp án
+  function lamKey(id) {
+    return xepHang(async function () {
+      var ng = nguonTheoId(id);
+      if (!ng || !ng.bytes || ng.laKey) { veFile(); return; }
+      var key;
+      try { key = await NH.docx.parseAnswerKey(ng.bytes, { fileName: ng.name.replace(/^.*\//, '') }); } catch (e) { key = null; }
+      if (!key || !key.count) {
+        thongBao('Không đọc được đáp án nào trong "' + ng.name + '" — cần bảng số câu – đáp án hoặc các dòng "Câu 1: A".', 'loi');
+        veFile();
+        return;
+      }
+      S.muc.filter(function (e) { return e.nguonId === id; }).forEach(giaiPhongAnh);
+      S.muc = S.muc.filter(function (e) { return e.nguonId !== id; });
+      ng.laKey = true; ng.key = key; ng.dich = undefined; ng.ketQua = null; ng.tuKey = [];
+      ng.issues = Array.isArray(key.issues) ? key.issues : [];
+      boKeyKhoiDe(id);
+      if (!mucTheoKey(S.dangChon)) S.dangChon = S.muc[0] ? S.muc[0].key : null;
+      ghepDapAn();
+      veLai();
+    });
+  }
+
+  function xepHang(fn) {
+    S.hangDoi = S.hangDoi.then(fn).catch(function (e) { thongBao('Lỗi: ' + (e && e.message || e), 'loi'); });
+    return S.hangDoi;
   }
 
   // Thay các ngân hàng của một nguồn (đọc lại) — giữ tên đã sửa, điểm đã sửa và câu đã bỏ chọn
@@ -1134,15 +1380,25 @@
   }
 
   function boNguon(id) {
-    var ng = S.nguon.filter(function (n) { return n.id === id; })[0];
-    if (!ng) return;
-    S.muc = S.muc.filter(function (e) { if (e.nguonId === id) { giaiPhongAnh(e); return false; } return true; });
-    S.nguon = S.nguon.filter(function (n) { return n.id !== id; });
-    if (ng.kind === 'image' && S.anhKem[ng.name]) delete S.anhKem[ng.name];
-    if (!mucTheoKey(S.dangChon)) S.dangChon = S.muc[0] ? S.muc[0].key : null;
-    S.ketQua = null;
-    rong($('ket-qua-xuat'));
-    veLai();
+    return xepHang(async function () {
+      var ng = nguonTheoId(id);
+      if (!ng) return;
+      S.muc = S.muc.filter(function (e) { if (e.nguonId === id) { giaiPhongAnh(e); return false; } return true; });
+      S.nguon = S.nguon.filter(function (n) { return n.id !== id; });
+      if (ng.kind === 'image' && S.anhKem[ng.name]) delete S.anhKem[ng.name];
+      if (!mucTheoKey(S.dangChon)) S.dangChon = S.muc[0] ? S.muc[0].key : null;
+      S.ketQua = null;
+      rong($('ket-qua-xuat'));
+      if (ng.laKey) {
+        // bỏ file đáp án → đọc lại file đề đã được điền để trả về đúng như file đề
+        var de = ng.dich ? nguonTheoId(ng.dich) : null;
+        if (de) { veLai(); await phanTich(de); }
+      } else {
+        boKeyKhoiDe(id);
+        ghepDapAn();
+      }
+      veLai();
+    });
   }
 
   function boMuc(key) {
@@ -1151,8 +1407,11 @@
     giaiPhongAnh(e);
     var i = S.muc.indexOf(e);
     S.muc.splice(i, 1);
-    // nguồn đọc đề không còn ngân hàng nào → bỏ luôn nguồn
-    if (!S.muc.some(function (x) { return x.nguonId === e.nguonId; })) S.nguon = S.nguon.filter(function (n) { return n.id !== e.nguonId; });
+    // nguồn đọc đề không còn ngân hàng nào → bỏ luôn nguồn (file đáp án đang trỏ vào nó chờ ghép lại)
+    if (!S.muc.some(function (x) { return x.nguonId === e.nguonId; })) {
+      S.nguon = S.nguon.filter(function (n) { return n.id !== e.nguonId; });
+      boKeyKhoiDe(e.nguonId);
+    }
     S.dangChon = S.muc[Math.min(i, S.muc.length - 1)] ? S.muc[Math.min(i, S.muc.length - 1)].key : null;
     veLai();
   }
@@ -1182,7 +1441,13 @@
     });
     $('ds-file').addEventListener('click', function (ev) {
       var b = ev.target.closest('[data-bo-nguon]');
-      if (b) boNguon(b.getAttribute('data-bo-nguon'));
+      if (b) { boNguon(b.getAttribute('data-bo-nguon')); return; }
+      var k = ev.target.closest('[data-lam-key]');
+      if (k) { k.disabled = true; lamKey(k.getAttribute('data-lam-key')); }
+    });
+    $('ds-file').addEventListener('change', function (ev) {
+      var s = ev.target.closest('[data-key-dich]');
+      if (s) { s.disabled = true; doiDichKey(s.getAttribute('data-key-dich'), s.value); }
     });
   }
 
@@ -1417,7 +1682,27 @@
     });
     $('cv-gui').addEventListener('click', guiCanvas);
     $('cv-huy').addEventListener('click', function () { if (S.cv.ctrl) S.cv.ctrl.abort(); });
+    $('cv-nhom-dich').addEventListener('change', function (ev) {
+      if (ev.target.name !== 'cv-dich' || S.cv.dangGui) return;
+      S.cv.dich = ev.target.value === 'newquiz' ? 'newquiz' : 'classic';
+      luuDichGui();
+      veDichGui();
+    });
+    veDichGui();
     await capNhatCanvas();
+  }
+
+  // Hai cách gửi: Classic (ghi đè được) / chuyển sang New Quizzes (mỗi lần gửi tạo một New Quiz mới)
+  function veDichGui() {
+    var nq = S.cv.dich === 'newquiz';
+    var r = $('cv-nhom-dich').querySelectorAll('input[name="cv-dich"]');
+    for (var i = 0; i < r.length; i++) {
+      r[i].checked = r[i].value === S.cv.dich;
+      r[i].closest('.opt').classList.toggle('is-checked', r[i].checked);
+    }
+    $('cv-hop-ghi-de').hidden = nq;
+    $('cv-ghi-chu-nq').hidden = !nq;
+    $('cv-gui').textContent = nq ? 'Gửi và chuyển sang New Quizzes' : 'Gửi vào Question Bank';
   }
 
   async function capNhatCanvas() {
@@ -1428,6 +1713,11 @@
     var bat = !!(cfg && cfg.enabled);
     $('buoc-canvas').hidden = !bat;
     $('buoc-nav-canvas').hidden = !bat;
+    // địa chỉ Canvas của trường (kể cả khi chưa bật đăng nhập) → gợi ý ở bước 3 và bước 4
+    var truong = rong($('cv-truong')), g = goiYCanvasTruong();
+    truong.hidden = !g;
+    if (g) while (g.firstChild) truong.appendChild(g.firstChild);
+    if (!$('form-xuat').hidden) veCachNhap();
     if (!bat) return;
     var user = null;
     if (cfg.loggedIn) {
@@ -1565,10 +1855,13 @@
     var kq = rong($('cv-ket-qua'));
     if (!banks.length) { thongBao('Ngân hàng này chưa có câu nào xuất được.', 'loi'); return; }
     var khoa = S.cv.khoaHoc.filter(function (c) { return c.id === courseId; })[0];
+    var nq = S.cv.dich === 'newquiz';
     S.cv.dangGui = true;
     S.cv.ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     $('cv-gui').disabled = true;
     $('cv-huy').hidden = !S.cv.ctrl;
+    var radio = $('cv-nhom-dich').querySelectorAll('input');
+    for (var ri = 0; ri < radio.length; ri++) radio[ri].disabled = true;
     var thanh = $('cv-thanh');
     thanh.className = 'progress';
     $('cv-tien-trinh').hidden = false;
@@ -1578,47 +1871,64 @@
       $('cv-tt-msg').textContent = p.message || '';
       $('cv-tt-pct').textContent = p.percent + '%';
     }
-    tienTrinh({ percent: 1, message: 'Đang tạo gói QTI (Classic)…' });
+    tienTrinh({ percent: 1, message: nq ? 'Đang tạo gói QTI (bài kiểm tra để chuyển sang New Quizzes)…' : 'Đang tạo gói QTI (Classic)…' });
     try {
       var opts = {};
       for (var k in S.opts) opts[k] = S.opts[k];
-      opts.target = 'classic';
+      // New Quizzes: gói bố cục Item Bank (một bài kiểm tra chứa mọi câu) — Canvas nhập rồi chuyển bài đó thành New Quiz.
+      // Classic: gói objectbank (chỉ tạo ngân hàng, ghi đè được).
+      opts.target = nq ? 'itembank' : 'classic';
       var pk = await qti.buildPackages(banks, opts);
       if (!pk.length) throw new Error('Không tạo được gói (mọi câu đều có lỗi).');
       var p = pk[0];
       var r = await cv.importPackage(courseId, {
-        bytes: p.bytes, fileName: p.fileName, bankName: e.bank.title, overwrite: $('cv-ghi-de').checked,
+        bytes: p.bytes, fileName: p.fileName, bankName: nq ? undefined : e.bank.title,
+        overwrite: nq ? false : $('cv-ghi-de').checked, importQuizzesNext: nq,
         onProgress: tienTrinh, signal: S.cv.ctrl ? S.cv.ctrl.signal : undefined
       });
       thanh.classList.add(r.ok ? 'is-ok' : 'is-loi');
-      var base = S.cv.cfg && /^https?:\/\//i.test(S.cv.cfg.base || '') ? S.cv.cfg.base.replace(/\/+$/, '') : '';
-      var link = base ? h('a', { href: base + '/courses/' + encodeURIComponent(courseId) + '/question_banks', target: '_blank', rel: 'noopener noreferrer' }, 'Mở Quản Lý Ngân Hàng Câu Hỏi trên Canvas ', icon('ngoai')) : null;
+      var base = S.cv.cfg && S.cv.cfg.base, lk = [];
+      var uChinh = linkCanvas(base, courseId, nq ? 'quizzes' : 'question_banks'), uNhap = linkCanvas(base, courseId, 'content_migrations');
+      if (uChinh) lk.push(h('a', { href: uChinh, target: '_blank', rel: 'noopener noreferrer' }, nq ? 'Mở Câu Hỏi Kiểm Tra (Quizzes) của khoá học ' : 'Mở Quản Lý Ngân Hàng Câu Hỏi trên Canvas ', icon('ngoai')));
+      if (uNhap) lk.push(h('a', { href: uNhap, target: '_blank', rel: 'noopener noreferrer' }, 'Xem lần nhập và các vấn đề (Nhập Nội Dung Khóa Học) ', icon('ngoai')));
+      var soCau = (p.counts && p.counts.total) || 0, tenKH = khoa ? khoa.name : 'khoá học';
       kq.appendChild(h('div', { class: 'notice ' + (r.ok ? 'n-ok' : 'n-loi') }, icon(r.ok ? 'okTron' : 'loi'), h('div', null,
-        h('b', { text: r.ok ? 'Đã nhập "' + e.bank.title + '" (' + (p.counts && p.counts.total || 0) + ' câu) vào ' + (khoa ? khoa.name : 'khoá học') + '.' : 'Canvas báo nhập không thành công.' }),
-        link ? h('p', { style: 'margin:4px 0 0' }, link) : null)));
+        h('b', { text: !r.ok ? 'Canvas báo nhập không thành công.' : nq
+          ? 'Đã gửi "' + e.bank.title + '" (' + soCau + ' câu) vào ' + tenKH + ' — Canvas chuyển thành một New Quiz cùng tên.'
+          : 'Đã nhập "' + e.bank.title + '" (' + soCau + ' câu) vào ' + tenKH + '.' }),
+        r.ok && nq ? h('p', { style: 'margin:4px 0 0', text: 'New Quiz có thể cần thêm vài phút mới hiện trong danh sách Câu Hỏi Kiểm Tra. ' +
+          'Xem thêm mục Ngân Hàng Câu Hỏi (Item Banks) của khoá học: nếu Canvas của trường bật chuyển ngân hàng sang New Quizzes thì có thể có Item Bank cùng tên (cần thử lần đầu). ' +
+          'Nếu khoá học chưa bật New Quizzes, Canvas giữ bài kiểm tra Classic.' }) : null,
+        lk.map(function (a) { return h('p', { style: 'margin:4px 0 0' }, a); }))));
       var vdXuat = locVanDeXuat(pk.issues || []).filter(function (i) { return i.level !== 'info'; });
       if (vdXuat.length) kq.appendChild(h('details', { class: 'fold' }, h('summary', null, 'Thông báo khi tạo gói (' + vdXuat.length + ')'), h('div', { class: 'fold-body' }, dsVanDe(vdXuat))));
       if (r.issues && r.issues.length) {
+        var goc = hostCanvas(base);
         kq.appendChild(h('details', { class: 'fold', open: true }, h('summary', null, 'Canvas báo ' + r.issues.length + ' vấn đề sau khi nhập'),
           h('div', { class: 'fold-body' }, h('ul', { class: 'issues' }, r.issues.map(function (i) {
             var lv = i.type === 'error' ? 'error' : i.type === 'warning' ? 'warn' : 'info';
-            var fix = i.fixUrl && /^https?:\/\//i.test(i.fixUrl) ? h('a', { href: i.fixUrl, target: '_blank', rel: 'noopener noreferrer', text: ' Sửa trên Canvas' }) : null;
+            // chỉ mở liên kết "sửa" trỏ về đúng Canvas của trường
+            var fix = goc && typeof i.fixUrl === 'string' && i.fixUrl.indexOf(goc.origin + '/') === 0
+              ? h('a', { href: i.fixUrl, target: '_blank', rel: 'noopener noreferrer', text: ' Sửa trên Canvas' }) : null;
             return h('li', { class: 'i-' + lv }, icon(IC_MUC[lv]), h('span', null, String(i.description || i.errorMessage || 'Vấn đề không rõ'), fix));
           })))));
       }
-      thongBao(r.ok ? 'Đã gửi lên Canvas.' : 'Nhập vào Canvas không thành công.', r.ok ? 'ok' : 'loi');
+      thongBao(r.ok ? (nq ? 'Đã gửi lên Canvas — đang chuyển sang New Quizzes.' : 'Đã gửi lên Canvas.') : 'Nhập vào Canvas không thành công.', r.ok ? 'ok' : 'loi');
       taiNganHangCanvas(courseId);
     } catch (err) {
       thanh.classList.add('is-loi');
       kq.appendChild(h('div', { class: 'notice n-loi' }, icon('loi'), h('div', null,
         h('b', { text: err && err.code === 'huy' ? 'Đã huỷ gửi.' : 'Không gửi được lên Canvas.' }),
         h('p', { style: 'margin:4px 0 0', text: err && err.message || String(err) }),
-        err && err.code !== 'huy' ? h('p', { class: 'nho', style: 'margin:4px 0 0', text: 'Có thể tải gói ở bước 3 (chọn Question Bank – Classic) rồi nhập tay.' }) : null)));
+        err && err.code !== 'huy' ? h('p', { class: 'nho', style: 'margin:4px 0 0', text: nq
+          ? 'Có thể tải gói ở bước 3 (Item Bank – New Quizzes) rồi nhập tay vào Item Bank hoặc một New Quiz mới.'
+          : 'Có thể tải gói ở bước 3 (chọn Question Bank – Classic) rồi nhập tay.' }) : null)));
       if (err && (err.status === 401 || err.code === 'het_phien' || err.code === 'chua_dang_nhap')) capNhatCanvas();
     } finally {
       S.cv.dangGui = false;
       S.cv.ctrl = null;
       $('cv-huy').hidden = true;
+      for (var rj = 0; rj < radio.length; rj++) radio[rj].disabled = false;
       kiemNutGui();
     }
   }

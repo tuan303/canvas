@@ -46,8 +46,8 @@
 
   function chuanChu(s) {
     s = core.nfc(s);
-    if (/[\u00A0\u00AD\u200B\uFEFF‑\u2028\u2029\u202F\r\n]/.test(s)) {
-      s = s.replace(/[\u00AD\u200B\uFEFF]/g, '').replace(/‑/g, '-').replace(/[\u00A0\u2028\u2029\u202F\r\n]/g, ' ');
+    if (/[\u00A0\u00AD\u200B\uFEFF\u2011\u2028\u2029\u202F\r\n]/.test(s)) {
+      s = s.replace(/[\u00AD\u200B\uFEFF]/g, '').replace(/\u2011/g, '-').replace(/[\u00A0\u2028\u2029\u202F\r\n]/g, ' ');
     }
     return s;
   }
@@ -794,7 +794,9 @@
         if (t.loi === 'thieu') this.baoLoi('error', 'thiếu file ảnh trong gói Word (' + (t.rId || '?') + ')');
         else if (t.loi === 'ngoai') this.baoLoi('error', 'có ảnh liên kết ngoài (không nhúng trong file) — hãy chèn ảnh trực tiếp vào Word');
         else if (t.loi === 'emf' || t.loi === 'wmf') {
-          this.baoLoi('error', 'có ' + (t.progId && t.progId !== 'OLE' ? 'đối tượng ' + t.progId + ' (ảnh ' + TB_ANH[t.loi] + ')' : 'công thức MathType/ảnh ' + TB_ANH[t.loi]) + GOI_Y_MT);
+          if (t.progId && t.progId !== 'OLE' && !/^Equation\.|MathType|^DSMT/i.test(t.progId)) {
+            this.baoLoi('error', 'có đối tượng ' + t.progId + ' (ảnh ' + TB_ANH[t.loi] + ') — Canvas không hiển thị được; hãy chụp/lưu đối tượng thành ảnh PNG rồi chèn lại');
+          } else this.baoLoi('error', 'có ' + (t.progId && t.progId !== 'OLE' ? 'đối tượng ' + t.progId + ' (ảnh ' + TB_ANH[t.loi] + ')' : 'công thức MathType/ảnh ' + TB_ANH[t.loi]) + GOI_Y_MT);
         } else this.baoLoi('error', 'có ảnh định dạng ' + (TB_ANH[t.loi] || t.loi) + ' — Canvas không hiển thị được; hãy lưu ảnh thành PNG/JPG rồi chèn lại');
         return '';
       }
@@ -871,7 +873,7 @@
   var RE_DIEM_MD = /^[\s\uFFFC]*diem\s+mac\s+dinh\s*[:：]?\s*/;
   var RE_DOAN_DAN = /^[\s\uFFFC]*doan\s+dan(?:\s+chung)?(?:\s*\d+)?\s*(?:[:：]\s*|$)/;
   var RE_HET_DOAN_DAN = /^[\s\uFFFC\-–—_*=]*het\s+doan\s+dan\b/;
-  var RE_HET = /^[\s\-–—_*=.~]*het[\s\-–—_*=.~!]*$/;
+  var RE_HET = /^[\s\-–—_*=.~]*(?:het|the\s+end)[\s\-–—_*=.~!]*$/;
   var RE_BANG_DA = /^[\s\uFFFC]*bang\s+dap\s+an\b(?:\s+(?:va|&)\s+huong\s+dan\s+cham)?\s*[:：.]?\s*/;
   var RE_DAP_AN = /^[\s\uFFFC]*(?:dap\s*an(?:\s+dung)?|d\.?\s?a\.?|d\/a|answers?)\s*[:：]\s*/;
   var RE_LOI_GIAI = /^[\s\uFFFC]*(?:(?:loi\s+giai|huong\s+dan\s+giai|giai\s+thich|giai)(?:\s+chi\s+tiet)?|huong\s+dan\s+cham|hd\s*giai|hd\s*cham|hdg|hdc)\s*(?:[:：.]\s*|$)/;
@@ -1004,6 +1006,9 @@
       if (/^(và|va|and)$/i.test(x)) continue;
       var a = /^\*?([A-Ha-h])[.):]?$/.exec(x);
       if (a) { out.push(a[1].toUpperCase()); continue; }
+      // mẫu upload: "A=30, B=30, C=40, D=-80" — trọng số > 0 là phương án đúng, ≤ 0 là sai
+      var w = /^([A-H])=([-+]?\d+(?:[.,]\d+)?)%?$/.exec(x);
+      if (w) { if (parseFloat(w[2].replace(',', '.')) > 0) out.push(w[1]); continue; }
       if (!out.length && /^[A-H]{2,8}[.]?$/.test(x)) { out = out.concat(x.replace('.', '').split('')); continue; }
       break;
     }
@@ -1089,25 +1094,150 @@
     }).filter(function (x) { return x.v; });
   }
 
+  var RE_TIEU_DE_DA = /(?:^|[^a-z])(?:dap\s*an|huong\s+dan\s+cham|answer\s+keys?|answers?\s+sheet)(?![a-z])/;
+  var RE_SO_KEY_G = /\s+[-–]\s+(?=[\w.]*\d)[\w]+(?:\.[\w]+){2,}\s*$/; // "A - 4.0.TA.1.3": mã chỉ báo năng lực đi kèm đáp án
+
   /* ======================= phân tích mẫu ======================= */
 
-  function phanTich(units, ctx, mt, tenFile) {
+  // Chế độ đọc: 'cau' = câu bắt đầu bằng "Câu N"/"Question N" (mẫu của trường, đề THPT);
+  // 'so' = câu chỉ đánh số "1." "12)" "14<tab>" (đề tiếng Anh, IELTS, đề tiểu học trong bảng)
+  function xetCheDo(units, mt) {
+    var nCau = 0, nSo = 0;
+    var duyet = function (ds, sau) {
+      ds.forEach(function (u) {
+        if (u.k === 'tbl') {
+          if (sau > 3) return;
+          u.tbl.rows.forEach(function (r) { r.forEach(function (c) { if (!c.boQua) duyet(donViCuaO(c, mt), sau + 1); }); });
+          return;
+        }
+        if (u.k !== 'line' || dongRong(u)) return;
+        var g = gap(u.str);
+        if (laCau(u, g)) nCau++;
+        else if (laSo(u)) nSo++;
+      });
+    };
+    duyet(units, 0);
+    return nCau >= 2 || (nCau >= 1 && nSo < 3) ? 'cau' : 'so';
+  }
+
+  // "12." "12)" "14<tab>" ở đầu dòng (không nhận số thập phân "1.5")
+  function laSo(u) {
+    var m = /^([\s\uFFFC]*)(\d{1,3})(?:[ ]*[.)](?!\d)|[ ]*(?=\t))/.exec(u.str);
+    if (!m) return null;
+    var p = m[0].length;
+    while (p < u.str.length && /\s/.test(u.str[p])) p++;
+    return { no: String(parseInt(m[2], 10)), dau: m[1].length, cuoi: p, ngan: true };
+  }
+
+  // Dòng chỉ dẫn mở một nhóm câu: có phạm vi câu ("Questions 1-6", "câu 18 đến câu 22", "from 18 to 22"),
+  // hoặc (chế độ 'so') lời dặn kiểu "1. Look and CIRCLE … There is one example. (…/5 points)"
+  var RE_PHAM_VI = /(?:^|[^a-z])(?:questions?|cau(?:\s*hoi)?|boxes|box|items?)\s+(?:(?:from|tu)\s+)?(?:cau\s+)?(\d{1,3})\s*(?:-|–|—|to|den|and|&)\s*(?:cau\s+)?(\d{1,3})(?!\d)/;
+  var RE_PHAM_VI2 = /(?:questions?|cau(?:\s*hoi)?)\b[^.:]{0,40}?(?:from|tu)\s+(?:cau\s+)?(\d{1,3})\s*(?:to|den|-|–)\s*(?:cau\s+)?(\d{1,3})(?!\d)/;
+  var RE_O_DIEM = /\(\s*[.…_\s]*\/\s*\d+(?:[.,]\d+)?\s*(?:points?|pts?|marks?|diem|d)\s*\)/;
+  var RE_VI_DU = /there\s+(?:is|are)\s+(?:one|an|two|\d+)\s+examples?|co\s+(?:mot|1|hai|2)\s+(?:cau\s+)?vi\s+du/;
+  var RE_DONG_TU_HOA = /(?:^|[^A-Za-z])(?:CHOOSE|CIRCLE|WRITE|READ|LOOK|LISTEN|MATCH|COMPLETE|REARRANGE|TICK|FILL|UNDERLINE|COLOU?R|DRAW|FIND|ORDER|CROSS|PUT|SORT)(?![A-Za-z])/;
+  function phamVi(g) {
+    var m = RE_PHAM_VI.exec(g) || RE_PHAM_VI2.exec(g);
+    if (!m) return null;
+    var tu = +m[1], den = +m[2];
+    return den > tu && den - tu <= 80 ? { tu: tu, den: den } : null;
+  }
+  function laChiDan(u, g, so) {
+    if (RE_DAP_AN.test(g) || RE_LOI_GIAI.test(g) || RE_NHIEU.test(g)) return null;
+    if (nhanDau(u, RE_NHAN_PA) || nhanDau(u, RE_NHAN_Y)) return null;
+    var pv = phamVi(g);
+    if (pv) return pv;
+    if (!so || u.str.replace(/\s+/g, ' ').trim().length > 400) return null;
+    if (RE_O_DIEM.test(g) || RE_VI_DU.test(g) || RE_DONG_TU_HOA.test(u.str)) return {};
+    return null;
+  }
+
+  // Tiêu đề mục chung (không có chữ PHẦN): "I. Vocabulary", "III. Reading", "B. GRAMMAR", "READING PASSAGE 2"
+  function laTieuDeChung(u) {
+    var s = u.str.replace(/\uFFFC/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!s || s.length > 60) return null;
+    var m = /^([IVX]{1,4}|[A-H])\s*[.)\-–:]\s*(.+)$/.exec(s), nhan = m ? m[1] : '', than = (m ? m[2] : s).replace(/[\s:.\-–—]+$/, '');
+    var chu = than.replace(/[^\p{L}]/gu, '');
+    if (chu.length < 4 || !/\p{L}{3}/u.test(than)) return null;
+    var g = gap(s);
+    if (RE_DAP_AN.test(g) || RE_LOI_GIAI.test(g) || RE_NHIEU.test(g)) return null;
+    var hoa = than === than.toUpperCase() && /\p{Lu}/u.test(than);
+    var pt = !nhan && /^(?:part|section)\s+(\d{1,2}|[IVX]{1,4}|[A-D])(?![\p{L}\d])/iu.exec(than); // "Part 2", "Section B: Reading"
+    if (pt) return { key: /^\d+$/.test(pt[1]) ? String(+pt[1]) : /^[IVX]+$/i.test(pt[1]) ? String(soLaMa(pt[1])) : '', so: pt[1].toUpperCase(), ten: s, loai: loaiPhan(gap(s)), chung: true };
+    if (hoa) {
+      if (/\d/.test(than.replace(/\s\d{1,2}$/, ''))) return null; // "CH3COOH" là công thức, không phải tiêu đề
+    } else if (!(/^(?:I|II|III|IV|V|VI|VII|VIII|IX|X)$/.test(nhan) && /^\p{Lu}/u.test(than) && than.split(' ').length <= 6 && !/[?!;,]/.test(than))) return null;
+    var so = /^[IVX]{1,4}$/.test(nhan) ? nhan : (/\s(\d{1,2})$/.exec(than) || [])[1] || '';
+    return { key: !so ? '' : /^\d+$/.test(so) ? String(+so) : String(soLaMa(so)), so: so.toUpperCase(), ten: s, loai: loaiPhan(gap(s)), chung: true };
+  }
+
+  // Định dạng mẫu upload câu hỏi (mã loại trong ngoặc vuông + dòng ANSWER có trọng số):
+  // "Câu 1 [OC-NB]:" một đáp án, [MC] nhiều đáp án, [TF] hai lựa chọn, [FB] điền khuyết [[1]], [SDL] chọn từ danh sách,
+  // [ES] tự luận, [EM] câu chùm gồm các câu con "[TF]: …" "[OC]: …"
+  var MA_UPLOAD = { tf: '', oc: 'mc', mc: 'ma', fb: 'blanks', sdl: 'dropdowns', es: 'essay', em: 'em' };
+  var RE_CAU_CON = /^([\s\uFFFC]*)\[\s*(tf|oc|mc|fb|sdl|es)\s*\]\s*[:：.]?\s*/;
+  var RE_DINH_O = /^[\s\uFFFC]*\[\[\s*(\d{1,3})\s*\]\]\s*(?:[=:]\s*-?\d+(?:[.,]\d+)?\s*%?)?\s*$/;
+  // phần đầu mục đáp án trong đề: "ĐÁP ÁN", "HƯỚNG DẪN CHẤM", "ANSWER KEY" (viết hoa, đứng riêng một dòng)
+  var RE_MUC_DA = /^[\s\uFFFC]*(?:dap\s+an(?:\s+(?:va|&)\s+huong\s+dan\s+cham)?|huong\s+dan\s+cham|answer\s+keys?|answers|keys?)\s*[:.]?\s*$/;
+
+  // các nhãn A–H trong một dòng ở bất kỳ thứ tự nào ("A. there⇥C. next to⇥E. are") — danh sách lựa chọn chung của nhóm
+  function tachNhanNhom(line) {
+    var dau = nhanDau(line, RE_NHAN_PA);
+    if (!dau) return null;
+    var s = line.str, re = /(\t|[ ]{2,})(\*?)[ ]*([A-H])(?:[ ]*[.):]|[ ]*(?=\t))/g, ds = [dau], m;
+    re.lastIndex = dau.cuoi;
+    while ((m = re.exec(s))) {
+      var batDau = m.index + m[1].length, cuoi = m.index + m[0].length;
+      while (cuoi < s.length && /\s/.test(s[cuoi])) cuoi++;
+      ds.push({ chu: m[3], sao: !!m[2], dau: batDau, cuoi: cuoi, f: kieuTai(line, batDau + m[2].length).f, auto: false });
+    }
+    var out = ds.map(function (n, i) {
+      var den = i + 1 < ds.length ? ds[i + 1].dau : s.length;
+      return { nhan: n.chu, goc: n.chu, sao: n.sao, auto: n.auto, fNhan: n.f, nhanToks: cat(line.toks, n.dau, n.cuoi), units: [catDong(line, n.cuoi, den)] };
+    });
+    if (out.some(function (o) { return chuThuan(o.units[0].toks).trim().length > 150; })) return null;
+    return out;
+  }
+  function theoNhan(a, b) { return a.nhan < b.nhan ? -1 : a.nhan > b.nhan ? 1 : 0; }
+  function paChu(nhan, chu) {
+    return { nhan: nhan, goc: nhan, sao: false, auto: false, fNhan: {}, nhanToks: [{ t: 'text', s: nhan + '. ', f: {} }],
+      units: [taoDong([{ t: 'text', s: chu, f: {} }], 0, '')], tuNhom: true };
+  }
+  function saoPA(o, tuNhom) {
+    var c = {};
+    for (var k in o) if (hasOwn(o, k)) c[k] = o[k];
+    if (tuNhom) c.tuNhom = true;
+    return c;
+  }
+
+  // vị trí phương án "A." nằm giữa dòng câu hỏi: "Câu hỏi⇥A. x⇥B. y" (cần có cả nhãn B phía sau)
+  function viTriPATrongDong(line) {
+    var s = line.str, m = /(\t|[ ]{2,})(\*?)[ ]*A[ ]*[.)]/.exec(s);
+    if (!m || !/\S/.test(s.slice(0, m.index))) return -1;
+    var sau = s.slice(m.index + m[0].length);
+    return /(\t|[ ]{2,})\*?[ ]*B[ ]*[.)]/.test(sau) ? m.index + m[1].length : -1;
+  }
+
+  function phanTich(units, ctx, mt, tenFile, tuyChon) {
+    tuyChon = tuyChon || {};
+    var chiKey = !!tuyChon.chiDapAn;
     var banks = [], B = null, Q = null;
-    var st = { diemMD: 1, phan: null, stim: null, stimThu: false, mode: '', keyPhan: '', keyCho: null };
+    var st = { diemMD: 1, phan: null, stim: null, stimThu: false, mode: '', keyPhan: '', keyCho: null, nhom: null, soCuoi: -1, em: null, keyDong: null };
     var coDongNH = units.some(function (u) { return u.k === 'line' && RE_NGAN_HANG.test(gap(u.str)); });
+    var cheDo = xetCheDo(units, mt);
 
     function moBank(title) {
-      dongCau(); dongStim();
+      dongCau(); dongHetNhom(); dongStim();
       // cùng tên với ngân hàng đã có → viết tiếp vào đó (tránh hai ngân hàng trùng ident)
       var cu = banks.filter(function (b) { return b.title === title; })[0];
       if (cu) {
         B = cu;
         B.warnings.push(core.newIssue('info', 'Dòng "NGÂN HÀNG: ' + title + '" xuất hiện lần nữa — các câu sau được gộp vào ngân hàng đã có'));
       } else {
-        B = { title: title, cau: [], phan: [], key: [], warnings: [], le: [] };
+        B = { title: title, cau: [], phan: [], key: [], warnings: [], le: [], cheDo: cheDo };
         banks.push(B);
       }
-      st.phan = null; st.mode = ''; st.keyPhan = ''; st.keyCho = null;
+      st.phan = null; st.mode = chiKey ? 'key' : ''; st.keyPhan = ''; st.keyCho = null; st.soCuoi = -1; st.keyDong = null;
     }
     function dongCau() { if (Q) { B.cau.push(Q); Q = null; } }
     function dongStim() {
@@ -1116,16 +1246,152 @@
       }
       st.stim = null; st.stimThu = false;
     }
-    if (!coDongNH) moBank(tenFile);
+    if (!coDongNH || chiKey) moBank(tenFile);
 
-    function moCau(u, cau) {
-      dongCau();
-      Q = {
-        no: cau.no, diem: null, diemMD: st.diemMD, muc: '', the: '', phan: st.phan, stim: st.stim,
-        items: [], opts: [], stmts: [], nhieu: [], dapAn: null, dapAnKhac: [], fb: [], fbMode: false,
-        mo: null, keyVal: null, loi: []
+    /* ---- nhóm câu (lời dặn + đoạn văn dùng chung cho các câu sau nó) ---- */
+    function taoNhom(tu, den, cha) {
+      return { tu: tu, den: den, cha: cha, units: [], rieng: [], pa: [], tap: null, chuCai: null, soCau: 0, daCo: {}, em: false, phan: st.phan };
+    }
+    function taoQ(no, nhom) {
+      return {
+        no: no, diem: null, diemMD: st.diemMD, muc: '', the: '', phan: st.phan, stim: null, nhom: nhom || null,
+        items: [], opts: [], stmts: [], nhieu: [], dapAn: null, dapAnKhac: [], fb: [], fbMode: false, mo: null, keyVal: null, loi: []
       };
+    }
+    // nhóm có phạm vi câu mà không có câu đánh số nào nhưng có phương án ("Questions 21-22 · Choose TWO letters · A. … E. …")
+    // → một câu nhiều đáp án gánh cả phạm vi
+    function dongNhom(g) {
+      if (g.dong) return;
+      g.dong = true;
+      if (g.tu == null || g.soCau || g.pa.length < 2 || !B) return;
+      var q = taoQ(g.tu + '-' + g.den, g.cha);
+      q.phan = g.phan;
+      q.diem = (g.den - g.tu + 1) * st.diemMD;
+      g.rieng.forEach(function (x) { q.items.push({ vai: 'stem', u: x }); });
+      g.pa.slice().sort(theoNhan).forEach(function (o) { q.opts.push(saoPA(o)); q.items.push({ vai: 'opt', i: q.opts.length - 1 }); });
+      B.cau.push(q);
+    }
+    function dongHetNhom() {
+      for (var g = st.nhom; g; g = g.cha) dongNhom(g);
+      st.nhom = null; st.em = null;
+    }
+    // trước khi mở câu số no: đóng các nhóm không chứa câu này (phạm vi khác, câu chùm [EM] cũ)
+    function nhomChoCau(no) {
+      var n = parseInt(no, 10);
+      while (st.nhom) {
+        var g = st.nhom;
+        if (g.em || (g.tu != null && n !== 0 && !(n >= g.tu && n <= g.den))) { dongNhom(g); st.nhom = g.cha; continue; }
+        break;
+      }
+      st.em = null;
+    }
+    function danhDauNhom(no) {
+      for (var g = st.nhom; g; g = g.cha) { g.soCau++; g.daCo[no] = 1; }
+      // câu cùng số đã sinh từ ô trống trong đoạn văn (đoạn văn cloze có "(18) ____") → bỏ, giữ câu thật
+      for (var i = B.cau.length - 1; i >= 0; i--) if (B.cau[i].oTrong && B.cau[i].no === no) B.cau.splice(i, 1);
+    }
+    function moNhom(u, cd) {
+      dongStim();
+      var co = cd.tu != null, g = st.nhom;
+      if (g && !g.soCau && !g.em && (!co || g.tu == null || (g.tu === cd.tu && g.den === cd.den))) {
+        if (co && g.tu == null) { g.tu = cd.tu; g.den = cd.den; } // lời dặn tiếp theo của cùng nhóm
+        g.units.push(u); g.rieng.push(u);
+        return;
+      }
+      if (co) { while (g && !(g.tu != null && g.tu <= cd.tu && cd.den <= g.den)) { dongNhom(g); g = g.cha; } }
+      else { while (g) { dongNhom(g); g = g.cha; } }
+      st.nhom = taoNhom(co ? cd.tu : null, co ? cd.den : null, g);
+      st.nhom.units.push(u); st.nhom.rieng.push(u);
+      st.em = null; st.soCuoi = -1;
+    }
+    function themVaoNhom(g, u) {
+      g.units.push(u);
+      if (u.k !== 'line') { g.rieng.push(u); return; }
+      var ds = tachNhanNhom(u);
+      if (ds) { ds.forEach(function (o) { if (!g.pa.some(function (p) { return p.nhan === o.nhan; })) g.pa.push(o); }); return; }
+      g.rieng.push(u);
+      var s = chuThuan(u.toks).replace(/\s+/g, ' ').trim(), m;
+      if ((m = /^(TRUE|FALSE|NOT GIVEN|YES|NO)(?![A-Za-z])/.exec(s)) && s.length > m[1].length + 3) {
+        g.tap = g.tap || [];
+        if (g.tap.indexOf(m[1]) < 0) g.tap.push(m[1]);
+      }
+      if ((m = /(?:^|[^A-Za-z])([A-H])\s*[-–—]\s*([A-H])(?![A-Za-z])/.exec(s)) && m[1] < m[2]) {
+        g.chuCai = [];
+        for (var c = m[1].charCodeAt(0); c <= m[2].charCodeAt(0); c++) g.chuCai.push(String.fromCharCode(c));
+      } else if ((m = /(?:^|[^A-Za-z])((?:[A-H]\s*,\s*)+)(?:or|and|hoặc|và)\s+([A-H])(?![A-Za-z])/.exec(s))) {
+        g.chuCai = (m[1].match(/[A-H]/g) || []).concat([m[2]]);
+      }
+    }
+    function themKhongCau(u) {
+      if (st.stim && st.stimThu) { st.stim.units.push(u); return; }
+      if (st.nhom) { themVaoNhom(st.nhom, u); return; }
+      B.le.push(u);
+    }
+
+    // ô trống đánh số trong lời văn của nhóm (IELTS: "… 23 electromagnetic radiation …" — đáp án tô màu ngay sau số,
+    // hoặc "23 ………") → mỗi ô một câu trả lời ngắn
+    function thuOTrong(u) {
+      var g = st.nhom;
+      while (g && g.tu == null) g = g.cha;
+      if (!g) return false;
+      var s = u.str, re = /(^|[\s(\[“"'‘:;,])(\(?)(\d{1,3})(\)?)(?=\s)/g, m, ds = [];
+      while ((m = re.exec(s))) {
+        var n = +m[3];
+        if (n < g.tu || n > g.den || g.daCo[String(n)] || ds.some(function (d) { return d.n === n; })) continue;
+        var batDau = m.index + m[1].length, p = m.index + m[0].length;
+        while (p < s.length && /\s/.test(s[p])) p++;
+        var b = p;
+        while (b < s.length) {
+          if (/\s/.test(s[b])) { b++; continue; }
+          var f = kieuTai(u, b).f;
+          if (f.hl || f.red || f.u) { b++; continue; }
+          break;
+        }
+        var e = b;
+        while (e > p && /\s/.test(s[e - 1])) e--;
+        var dapAn = s.slice(p, e).replace(/\s+/g, ' ').trim(), cham = /^[._…]{3,}/.exec(s.slice(p));
+        if (!dapAn && !cham) continue;
+        ds.push({ n: n, tu: batDau, den: dapAn ? e : p + cham[0].length, dapAn: dapAn });
+        re.lastIndex = dapAn ? e : p + cham[0].length;
+      }
+      if (!ds.length) return false;
+      dongCau();
+      var toks = [], tu = 0;
+      ds.forEach(function (d) {
+        toks = toks.concat(cat(u.toks, tu, d.tu));
+        toks.push({ t: 'text', s: '(' + d.n + ') ______', f: { b: true } });
+        tu = d.den;
+      });
+      var dong = taoDong(toks.concat(cat(u.toks, tu)), u.para, u.jc);
+      themVaoNhom(st.nhom, dong);
+      ds.forEach(function (d) {
+        var q = taoQ(String(d.n), st.nhom);
+        q.oTrong = true;
+        q.items.push({ vai: 'stem', u: cauChua(dong, '(' + d.n + ') ______') });
+        if (d.dapAn) q.dapAn = { s: d.dapAn, line: taoDong([{ t: 'text', s: d.dapAn, f: {} }], u.para, '') };
+        for (var x = st.nhom; x; x = x.cha) { x.soCau++; x.daCo[q.no] = 1; }
+        B.cau.push(q);
+      });
+      return true;
+    }
+    // câu (sentence) chứa ô trống — dòng dài thì chỉ lấy câu đó làm nội dung
+    function cauChua(dong, moc) {
+      var s = dong.str, i = s.indexOf(moc);
+      if (s.length <= 200 || i < 0) return dong;
+      var a = 0, b = s.length, re = /[.!?](?=\s+\S)/g, m;
+      while ((m = re.exec(s))) { if (m.index < i) a = m.index + 1; else if (m.index >= i + moc.length) { b = m.index + 1; break; } }
+      return boTrangDau(catDong(dong, a, b));
+    }
+
+    /* ---- câu hỏi ---- */
+    function moCau(u, cau, con) {
+      dongCau();
+      if (!con) nhomChoCau(cau.no);
+      Q = taoQ(cau.no, st.nhom);
+      Q.stim = st.stim;
+      Q.viDu = cau.no === '0'; // câu ví dụ (số 0) của đề tiếng Anh — không xuất
       if (st.stim) { st.stim.soCau++; st.stimThu = false; }
+      if (!Q.viDu) { danhDauNhom(Q.no); if (/^\d+$/.test(cau.no)) st.soCuoi = +cau.no; }
       var s = u.str, p = cau.cuoi, ngan = cau.ngan;
       for (;;) { // điểm, mức độ, thẻ loại — thứ tự bất kỳ
         var w = /^\s*/.exec(s.slice(p))[0].length, sau = s.slice(p + w), m;
@@ -1141,6 +1407,12 @@
           var ma = gap(m[1]).trim().replace(/\s+/g, ' ');
           if (hasOwn(MUC_DO, ma)) { Q.muc = MUC_DO[ma]; p += w + m[0].length; continue; }
           if (hasOwn(THE_LOAI, ma)) { Q.the = THE_LOAI[ma]; p += w + m[0].length; continue; }
+          var up = /^(tf|oc|mc|fb|sdl|es|em)\s*(?:-\s*(nb|h|th|vd|vdc))?$/.exec(ma);
+          if (up) {
+            Q.upload = up[1]; Q.the = MA_UPLOAD[up[1]];
+            if (up[2]) Q.muc = up[2] === 'h' ? 'TH' : up[2].toUpperCase();
+            p += w + m[0].length; continue;
+          }
           var d2 = core.parsePoints(m[1]);
           if (d2 != null && d2 > 0) { Q.diem = d2; p += w + m[0].length; continue; }
           break;
@@ -1155,7 +1427,33 @@
         var mm = /\(\s*(\d+(?:[.,]\d+)?)\s*(?:điểm|diem|đ)\s*\)\s*$/i.exec(dong.str);
         if (mm) { Q.diem = core.parsePoints(mm[1]); dong = catDong(dong, 0, mm.index); }
       }
-      if (!dongRong(dong)) Q.items.push({ vai: 'stem', u: boTrangDau(dong) });
+      if (Q.the === 'em') { // câu chùm: nội dung chung thành đoạn dẫn của các câu con
+        var g = taoNhom(null, null, st.nhom);
+        g.em = true;
+        if (!dongRong(dong)) g.units.push(boTrangDau(dong));
+        st.nhom = g; st.em = { no: Q.no, dem: 0, muc: Q.muc };
+        Q = null;
+        return;
+      }
+      if (dongRong(dong)) return;
+      var d0 = boTrangDau(dong), n0 = nhanDau(d0, RE_NHAN_PA), k;
+      // phương án nằm ngay trên dòng số câu: "1. A. waited⇥B. needed⇥C. stopped" / "31. Câu hỏi⇥A. Yes⇥B. No"
+      if (n0 && n0.chu === 'A' && !/:/.test(d0.str.slice(n0.viTriChu, n0.cuoi)) && nhanCungDong(d0, n0).length >= 2) { themPA(d0, n0); return; }
+      if ((k = viTriPATrongDong(d0)) > 0) {
+        Q.items.push({ vai: 'stem', u: catDong(d0, 0, k) });
+        var d1 = catDong(d0, k), n1 = nhanDau(d1, RE_NHAN_PA);
+        if (n1) { themPA(d1, n1); return; }
+        Q.items.push({ vai: 'stem', u: d1 });
+        return;
+      }
+      Q.items.push({ vai: 'stem', u: d0 });
+    }
+    function moCauCon(u, m) { // "[TF]: …" trong câu chùm [EM]
+      var em = st.em;
+      moCau(u, { no: em.no + '.' + (++em.dem), dau: m[1].length, cuoi: m[0].length, ngan: true }, true);
+      Q.upload = m[2]; Q.the = MA_UPLOAD[m[2]];
+      if (!Q.muc) Q.muc = em.muc;
+      st.em = em;
     }
 
     function themTiep(u) { // dòng/bảng tiếp nối: thuộc phương án/ý đang mở, hoặc nội dung câu
@@ -1165,23 +1463,26 @@
 
     function ghiDapAn(line, cuoi) {
       var phan = catDong(line, cuoi), v = chuThuan(phan.toks).replace(/\s+/g, ' ').trim();
+      if (Q.dinhMo) { Q.oDinh[Q.dinhMo].dapAn = v; return; }
+      if (v && /^[._…\-–—\s]+$/.test(v)) { themTiep(line); return; } // "Answer: ________" là chỗ để học sinh viết
       var khongPA = !Q.opts.length && !Q.stmts.length;
       var tuLuan = Q.the === 'essay' || (!Q.the && Q.phan && Q.phan.loai === 'essay');
-      if (khongPA && (!v || tuLuan || v.length > 80)) { Q.fbMode = true; if (!dongRong(phan)) Q.fb.push(boTrangDau(phan)); return; }
+      if ((khongPA || tuLuan) && (!v || tuLuan || v.length > 80)) { Q.fbMode = true; if (!dongRong(phan)) Q.fb.push(boTrangDau(phan)); return; }
       if (Q.dapAn) { Q.dapAnKhac.push(v); return; }
       Q.dapAn = { s: v, line: boTrangDau(phan) };
     }
 
+    function dsPA() { return Q.dinhMo ? Q.oDinh[Q.dinhMo].opts : Q.opts; }
     function themPA(line, dau) {
-      var ds = nhanCungDong(line, dau);
+      var ds = nhanCungDong(line, dau), dich = dsPA();
       ds.forEach(function (n, i) {
         var den = i + 1 < ds.length ? ds[i + 1].dau : line.str.length;
         var o = {
           nhan: n.chu, goc: n.chu, sao: n.sao, auto: n.auto, fNhan: n.f,
           nhanToks: cat(line.toks, n.dau, n.cuoi), units: [catDong(line, n.cuoi, den)]
         };
-        Q.opts.push(o);
-        Q.items.push({ vai: 'opt', i: Q.opts.length - 1 });
+        dich.push(o);
+        if (!Q.dinhMo) Q.items.push({ vai: 'opt', i: Q.opts.length - 1 });
         Q.mo = o;
       });
     }
@@ -1192,15 +1493,44 @@
       Q.mo = o;
     }
     function nhanPA(n) {
-      if (!Q.opts.length) return n.chu === 'A' || n.auto;
-      var cuoi = Q.opts[Q.opts.length - 1];
+      var ds = dsPA();
+      if (!ds.length) return n.chu === 'A' || n.auto;
+      var cuoi = ds[ds.length - 1];
       return n.chu === chuKe(cuoi.nhan) || (n.auto && cuoi.auto && n.chu > cuoi.nhan);
     }
     function nhanY(n) {
-      if (Q.opts.length) return false;
+      if (Q.opts.length || Q.dinhMo) return false;
       if (!Q.stmts.length) return n.chu === 'a' || n.auto;
       var cuoi = Q.stmts[Q.stmts.length - 1];
       return n.chu === chuKe(cuoi.nhan) || (n.auto && cuoi.auto && n.chu > cuoi.nhan);
+    }
+    function nhanHopLe(u) { // dòng mở đầu bằng nhãn phương án/ý đúng thứ tự của câu đang mở
+      if (!Q) return false;
+      var n = nhanDau(u, RE_NHAN_PA);
+      if (n && nhanPA(n)) return true;
+      var y = nhanDau(u, RE_NHAN_Y);
+      return !!(y && nhanY(y));
+    }
+
+    // "Tìm lỗi sai": câu có các đoạn gạch chân + dòng "A   B   C   D" ngay dưới → phương án là các đoạn gạch chân
+    function thuLoiSai(u) {
+      var chu = u.str.match(/[A-E]/g), dong = null;
+      for (var i = Q.items.length - 1; i >= 0; i--) if (Q.items[i].vai === 'stem' && Q.items[i].u.k === 'line') { dong = Q.items[i].u; break; }
+      if (!dong) return false;
+      var doan = [], cur = null;
+      dong.toks.forEach(function (t) {
+        var u2 = t.t === 'text' && t.f && t.f.u && /\S/.test(t.s);
+        if (u2) { if (!cur) { cur = []; doan.push(cur); } cur.push(t); }
+        else if (!(t.t === 'text' && t.f && t.f.u)) cur = null;
+      });
+      if (doan.length !== chu.length) return false;
+      doan.forEach(function (ts, i) {
+        var sach = ts.map(function (t) { var f = {}; for (var k in t.f) if (hasOwn(t.f, k) && k !== 'u') f[k] = t.f[k]; return { t: 'text', s: t.s, f: f }; });
+        Q.opts.push({ nhan: chu[i], goc: chu[i], sao: false, auto: false, fNhan: {}, nhanToks: [{ t: 'text', s: chu[i] + '. ', f: {} }], units: [boTrangDau(taoDong(sach, u.para, ''))], tuNhom: true });
+        Q.items.push({ vai: 'opt', i: Q.opts.length - 1 });
+      });
+      Q.mo = null;
+      return true;
     }
 
     function xuLyDong(u) {
@@ -1215,6 +1545,10 @@
       if (Q.fbMode) {
         if ((m = RE_DAP_AN.exec(g)) && !Q.dapAn && (Q.opts.length || Q.stmts.length)) { ghiDapAn(u, m[0].length); return; }
         Q.fb.push(u);
+        return;
+      }
+      if (Q.upload && (Q.the === 'blanks' || Q.the === 'dropdowns') && (m = RE_DINH_O.exec(u.str))) {
+        Q.oDinh = Q.oDinh || {}; Q.dinhMo = m[1]; Q.oDinh[m[1]] = { opts: [], dapAn: null }; Q.mo = null;
         return;
       }
       if ((m = RE_LOI_GIAI.exec(g))) {
@@ -1238,6 +1572,7 @@
       if (RE_MUI_TEN_MANH.test(u.str) || (Q.the === 'matching' && RE_MUI_TEN.test(u.str))) {
         Q.items.push({ vai: 'pair', u: u, manh: true }); Q.mo = null; return;
       }
+      if (!Q.opts.length && !Q.stmts.length && /^[\s\uFFFC]*A(?:\s+B)(?:\s+C)?(?:\s+D)?(?:\s+E)?\s*$/.test(u.str) && thuLoiSai(u)) return;
       var n = nhanDau(u, RE_NHAN_PA);
       if (n && nhanPA(n)) { themPA(u, n); return; }
       var y = nhanDau(u, RE_NHAN_Y);
@@ -1286,28 +1621,85 @@
       return true;
     }
 
+    /* ---- bảng chứa câu hỏi (đề tiểu học/tiếng Anh dàn trong bảng) → các dòng ---- */
+    function dauCauO(units0) { // dòng đầu (không rỗng) của ô có phải mở đầu câu hỏi
+      var d = units0.filter(function (x) { return x.k === 'tbl' || !dongRong(x); })[0];
+      if (!d || d.k !== 'line') return false;
+      return cheDo === 'cau' ? !!laCau(d, gap(d.str)) : !!laSo(d);
+    }
+    function bangCoCau(tbl, sau) {
+      if (sau > 4) return null;
+      var coCau = false, coLong = false, soO = 0;
+      tbl.rows.forEach(function (r) {
+        var o = r.filter(function (c) { return !c.boQua; });
+        soO += o.length;
+        var dv0 = o.length ? donViCuaO(o[0], mt) : [];
+        var o1 = o.filter(function (c) { return donViCuaO(c, mt).some(function (x) { return x.k === 'tbl' || !dongRong(x); }); })[0];
+        if (o1 && dauCauO(donViCuaO(o1, mt))) coCau = true;
+        else if (dv0.length && dauCauO(dv0)) coCau = true;
+        o.forEach(function (c) { donViCuaO(c, mt).forEach(function (x) { if (x.k === 'tbl' && bangCoCau(x.tbl, sau + 1)) coLong = true; }); });
+      });
+      return coCau ? 'cau' : coLong ? 'boc' : null;
+    }
+    function traiBang(tbl) {
+      var loai = bangCoCau(tbl, 0);
+      if (!loai) return null;
+      var out = [];
+      tbl.rows.forEach(function (r) {
+        var o = r.filter(function (c) { return !c.boQua; }).map(function (c) {
+          return donViCuaO(c, mt).filter(function (x) { return x.k === 'tbl' || !dongRong(x); });
+        }).filter(function (x) { return x.length; });
+        if (loai === 'boc') { o.forEach(function (x) { out = out.concat(x); }); return; }
+        // mỗi hàng → một dòng: dòng đầu của các ô nối bằng tab; dòng/bảng còn lại của ô xếp sau
+        var dau = [], sau = [];
+        o.forEach(function (x) {
+          if (x[0].k === 'line') { dau.push(x[0]); sau = sau.concat(x.slice(1)); }
+          else sau = sau.concat(x);
+        });
+        if (dau.length) {
+          var toks = [];
+          dau.forEach(function (d, i) { if (i) toks.push({ t: 'tab' }); toks = toks.concat(d.toks); });
+          out.push(taoDong(toks, dau[0].para, dau[0].jc));
+        }
+        out = out.concat(sau);
+      });
+      return out;
+    }
+
     /* ---- bảng đáp án ---- */
-    function themKey(no, v) { B.key.push({ phan: st.keyPhan, no: no, v: String(v).trim() }); }
+    function themKey(no, v) {
+      var e = { phan: st.keyPhan, no: no, v: String(v).replace(RE_SO_KEY_G, '').trim(), bang: !!st.trongBang };
+      B.key.push(e);
+      return e;
+    }
     function themKeyChu(s) {
-      var ds = tachCapKey(s);
-      ds.forEach(function (x) { themKey(x.no, x.v); });
-      return ds.length;
+      var ds = tachCapKey(s), e = null;
+      ds.forEach(function (x) { e = themKey(x.no, x.v); });
+      return { n: ds.length, cuoi: e };
     }
     function laSoCau(t) { var m = /^(?:c[âa]u\s*)?(\d{1,3})\s*[.:]?$/i.exec(t.trim()); return m ? String(+m[1]) : null; }
+    var RE_TD_SO = /^(cau|cau hoi|stt|so cau|so thu tu|item|items|no|q|question|questions|number)\s*[.:]?$/;
+    var RE_TD_DA = /^(d\/a|da|d\.a|dap an|dap an dung|ket qua|tra loi|answers?|keys?|correct answers?)\s*[.:]?$/;
     function docKeyBang(tbl) {
+      st.trongBang = true;
+      try { docKeyBang1(tbl); } finally { st.trongBang = false; }
+    }
+    function docKeyBang1(tbl) {
+      st.keyDong = null;
       var rows = tbl.rows.map(function (r) {
         return r.filter(function (c) { return !c.boQua; }).map(function (c) {
           var dv = donViCuaO(c, mt);
           return { col: c.col, span: c.span, text: dv.map(function (x) { return x.k === 'line' ? chuThuan(x.toks) : ''; }).join(' ').replace(/\s+/g, ' ').trim() };
         });
       });
+      rows.forEach(function (r) { r.forEach(function (c) { if (RE_TIEU_DE_DA.test(gap(c.text))) B.tieuDeDA = true; }); });
       if (st.keyCho != null && rows.length === 1) { // "Câu 1." + bảng một hàng các ký tự của đáp án
         themKey(st.keyCho, rows[0].map(function (c) { return c.text; }).join(''));
         st.keyCho = null;
         return;
       }
       st.keyCho = null;
-      var map = null;
+      var map = null, vaiCot = null;
       var xa = function () {
         if (map) map.forEach(function (mp) { if (mp.v.length) themKey(mp.no, mp.v.join('; ')); });
         map = null;
@@ -1315,9 +1707,28 @@
       rows.forEach(function (cells) {
         var ne = cells.filter(function (c) { return c.text; });
         if (!ne.length) return;
+        // hàng tiêu đề "Item | Key | Item | Key" / "Câu | Đáp án | Câu | Đáp án" → cột số câu / cột đáp án theo cặp
+        var vai = ne.map(function (c) { var t = gap(c.text).replace(/\s+/g, ' '); return RE_TD_SO.test(t) ? 'so' : RE_TD_DA.test(t) ? 'da' : ''; });
+        if (ne.length >= 2 && vai.every(Boolean) && vai.indexOf('so') >= 0 && vai.indexOf('da') >= 0) {
+          xa();
+          vaiCot = []; B.tieuDeDA = true;
+          ne.forEach(function (c, i) { if (vai[i] === 'so' && vai[i + 1] === 'da') vaiCot.push({ so: c, da: ne[i + 1] }); });
+          return;
+        }
+        if (vaiCot) {
+          var trongCot = function (o) { return cells.filter(function (c) { return c.text && c.col < o.col + o.span && c.col + c.span > o.col; }).map(function (c) { return c.text; }).join(' '); };
+          var n = 0;
+          vaiCot.forEach(function (vc) {
+            var so = laSoCau(trongCot(vc.so)), v = trongCot(vc.da);
+            if (so != null && v) { themKey(so, v); n++; }
+          });
+          if (n) return;
+          vaiCot = null;
+        }
         var g0 = gap(ne[0].text).replace(/\s+/g, ' ');
-        var tdSo = /^(cau|cau hoi|stt|so cau|so thu tu)\s*[.:]?$/.test(g0);
-        var tdDA = /^(d\/a|da|d\.a|dap an|dap an dung|ket qua|tra loi|answers?|key)\s*[.:]?$/.test(g0);
+        var tdSo = RE_TD_SO.test(g0);
+        var tdDA = RE_TD_DA.test(g0);
+        if (tdDA) B.tieuDeDA = true;
         var conLai = (tdSo || tdDA) ? ne.slice(1) : ne;
         var so = conLai.map(function (c) { return laSoCau(c.text); });
         var toanSo = conLai.length > 0 && so.every(function (x) { return x != null; });
@@ -1344,31 +1755,46 @@
           return;
         }
         // hàng kiểu "1 | A | 2 | B"
-        var n = 0;
         for (var i = 0; i < ne.length; i++) {
           var a = laSoCau(ne[i].text), b = ne[i + 1];
-          if (a != null && b && laSoCau(b.text) == null) { themKey(a, b.text); n++; i++; }
-          else if (a == null) n += themKeyChu(ne[i].text);
+          if (a != null && b && laSoCau(b.text) == null) { themKey(a, b.text); i++; }
+          else if (a == null) themKeyChu(ne[i].text);
         }
       });
       xa();
     }
     function xuLyKeyDong(u, g) {
-      var ph = laPhanBatKy(u, g);
+      if (RE_TIEU_DE_DA.test(g) && u.str.length <= 80) B.tieuDeDA = true;
+      var ph =laPhanBatKy(u, g) || (chiKey && laTieuDeChung(u));
       if (ph) {
-        if (ph.key && B.phan.some(function (p) { return p.key === ph.key; })) { st.keyPhan = ph.key; st.keyCho = null; return true; }
+        if (ph.key && (chiKey || B.phan.some(function (p) { return p.key === ph.key; }))) { st.keyPhan = ph.key; st.keyCho = null; st.keyDong = null; return true; }
+        if (chiKey) { st.keyDong = null; return true; }
         st.mode = ''; return false;
       }
-      if (RE_DOAN_DAN.test(g) || RE_HET_DOAN_DAN.test(g) || RE_DIEM_MD.test(g)) { st.mode = ''; return false; }
+      if (RE_DOAN_DAN.test(g) || RE_HET_DOAN_DAN.test(g) || RE_DIEM_MD.test(g)) { if (chiKey) return true; st.mode = ''; return false; }
       if (RE_HET.test(g)) return true;
+      if (chiKey && phamVi(g) && !laCau(u, g)) { st.keyDong = null; return true; } // "Câu 36 - 40:"
       var cau = laCau(u, g);
       if (cau) {
         var v = chuThuan(cat(u.toks, cau.cuoi)).replace(/\s+/g, ' ').trim();
-        if (v.length <= 40) { if (v) themKey(cau.no, v); else st.keyCho = cau.no; return true; }
+        if (v.length <= 40 || chiKey) {
+          if (v) { var e = themKey(cau.no, v); st.keyDong = v.length > 40 ? e : null; }
+          else { st.keyCho = cau.no; st.keyDong = null; }
+          return true;
+        }
         st.mode = ''; return false;
       }
       st.keyCho = null;
-      if (!themKeyChu(chuThuan(u.toks))) B.warnings.push(core.newIssue('info', 'Dòng trong BẢNG ĐÁP ÁN không đọc được: "' + rutGon(chuThuan(u.toks)) + '"'));
+      var chu = chuThuan(u.toks).replace(/\s+/g, ' ').trim();
+      var kq = themKeyChu(chu);
+      if (RE_TIEU_DE_DA.test(gap(chu)) && chu.length <= 80) B.tieuDeDA = true;
+      if (kq.n) { st.keyDong = kq.n === 1 && kq.cuoi && kq.cuoi.v.length > 40 ? kq.cuoi : null; return true; }
+      if (chiKey) {
+        // dòng nối tiếp của đáp án dài (hướng dẫn chấm tự luận) — chỉ nối vào đáp án viết trên dòng ngay trước
+        if (st.keyDong) st.keyDong.v += '\n' + chu;
+        return true;
+      }
+      B.warnings.push(core.newIssue('info', 'Dòng trong BẢNG ĐÁP ÁN không đọc được: "' + rutGon(chu) + '"'));
       return true;
     }
 
@@ -1378,14 +1804,15 @@
       if (u.k === 'tbl') {
         if (!B) continue;
         if (st.mode === 'key') { docKeyBang(u.tbl); continue; }
+        var trai = traiBang(u.tbl);
+        if (trai) { Array.prototype.splice.apply(units, [ui, 1].concat(trai)); ui--; continue; }
         if (Q) { xuLyDong(u); continue; }
-        if (st.stim && st.stimThu) { st.stim.units.push(u); continue; }
-        B.le.push(u);
+        themKhongCau(u);
         continue;
       }
       if (dongRong(u)) continue;
       var g = gap(u.str), m;
-      if ((m = RE_NGAN_HANG.exec(g))) {
+      if ((m = RE_NGAN_HANG.exec(g)) && !chiKey) {
         var ten = chuThuan(cat(u.toks, m[0].length)).replace(/\s+/g, ' ').trim();
         moBank(ten || tenFile);
         if (!ten) B.warnings.push(core.newIssue('warn', 'Dòng "NGÂN HÀNG:" chưa có tên — dùng tên file "' + tenFile + '"'));
@@ -1393,10 +1820,10 @@
       }
       if (!B) continue; // phần hướng dẫn trước dòng NGÂN HÀNG đầu tiên
       if (st.mode === 'key' && xuLyKeyDong(u, g)) continue;
-      if ((m = RE_BANG_DA.exec(g))) {
-        dongCau(); dongStim();
-        st.mode = 'key'; st.keyPhan = ''; st.keyCho = null;
-        var conLai = chuThuan(cat(u.toks, m[0].length)).trim();
+      if ((m = RE_BANG_DA.exec(g)) || (RE_MUC_DA.test(g) && u.str === u.str.toUpperCase() && /\p{Lu}/u.test(u.str) && (!Q || Q.opts.length || Q.stmts.length))) {
+        dongCau(); dongStim(); dongHetNhom();
+        st.mode = 'key'; st.keyPhan = ''; st.keyCho = null; st.keyDong = null;
+        var conLai = m ? chuThuan(cat(u.toks, m[0].length)).trim() : '';
         if (conLai) themKeyChu(conLai);
         continue;
       }
@@ -1409,7 +1836,7 @@
         continue;
       }
       var ph = laPhanBatKy(u, g);
-      if (ph) { dongCau(); dongStim(); st.phan = ph; B.phan.push(ph); continue; }
+      if (ph) { dongCau(); dongStim(); dongHetNhom(); st.phan = ph; B.phan.push(ph); st.soCuoi = -1; continue; }
       if ((m = RE_DIEM_MD.exec(g))) {
         dongCau();
         var vd = core.parsePoints(chuThuan(cat(u.toks, m[0].length)).trim());
@@ -1417,17 +1844,34 @@
         else B.warnings.push(core.newIssue('warn', 'Không đọc được ĐIỂM MẶC ĐỊNH: "' + rutGon(u.str) + '" — giữ ' + st.diemMD));
         continue;
       }
-      if (RE_HET.test(g)) { dongCau(); continue; }
-      var cau = laCau(u, g);
+      if (RE_HET.test(g)) { dongCau(); dongHetNhom(); continue; }
+      if (st.em && (m = RE_CAU_CON.exec(g))) { moCauCon(u, m); continue; }
+      var trongGiai = !!(Q && Q.fbMode);
+      var cau = null, cd = null;
+      if (cheDo === 'cau') {
+        cau = laCau(u, g);
+        if (!cau && !trongGiai) cd = laChiDan(u, g, false);
+      } else {
+        if (!trongGiai) cd = laChiDan(u, g, true);
+        if (!cd) {
+          cau = laSo(u);
+          // số nhỏ hơn câu trước (không có tiêu đề/lời dặn xen giữa) là danh sách đánh số trong nội dung câu
+          // (trừ "1." ngay sau một câu đã đủ phương án/ý: phần mới đánh số lại)
+          if (cau && cau.no !== '0' && st.soCuoi >= 0 && +cau.no <= st.soCuoi && !(cau.no === '1' && (!Q || Q.opts.length >= 2 || Q.stmts.length >= 2))) cau = null;
+        }
+      }
+      if (cd) { dongCau(); moNhom(u, cd); continue; }
       if (cau) { moCau(u, cau); continue; }
-      if (!Q) {
-        if (st.stim && st.stimThu) st.stim.units.push(u);
-        else B.le.push(u);
+      var td = laTieuDeChung(u);
+      if (td && !trongGiai && !nhanHopLe(u) && (cheDo === 'so' || (Q && (Q.opts.length || Q.stmts.length)))) {
+        dongCau(); dongStim(); dongHetNhom(); st.phan = td; B.phan.push(td); st.soCuoi = -1;
         continue;
       }
+      if (!Q && st.nhom && thuOTrong(u)) continue;
+      if (!Q) { themKhongCau(u); continue; }
       xuLyDong(u);
     }
-    dongCau(); dongStim();
+    dongCau(); dongHetNhom(); dongStim();
     return banks;
   }
 
@@ -1476,8 +1920,59 @@
     ds.forEach(function (o) {
       o.danhDau = o.sao || ['u', 'red', 'hl'].some(function (k) { return o.dd[k] && !boQua[k]; });
       o.boU = o.caU && o.dd.u && !boQua.u;
+      if (o.tuNhom) { o.danhDau = !!o.sao; o.boU = false; } // lựa chọn dựng từ danh sách chung của nhóm / đoạn gạch chân: không mang dấu đáp án
     });
     return boQua;
+  }
+
+  // "… [FALSE]" / "… [C]" cuối dòng, chữ trong ngoặc tô màu/gạch chân → đáp án (đề IELTS bôi vàng đáp án); bỏ khỏi nội dung
+  function layDapAnNgoac(q) {
+    for (var i = q.items.length - 1; i >= 0; i--) {
+      var it = q.items[i];
+      if (it.vai !== 'stem' || it.u.k !== 'line') continue;
+      var s = it.u.str, re = /[\[(]([^\[\]()]{1,40})[\])]/g, m, chon = null;
+      while ((m = re.exec(s))) chon = m;
+      if (!chon || /[^\s.]/.test(s.slice(chon.index + chon[0].length))) continue;
+      var a = chon.index + 1, b = a + chon[1].length, n = 0, d = 0;
+      for (var k = a; k < b; k++) {
+        if (/\s/.test(s[k])) continue;
+        n++;
+        var f = kieuTai(it.u, k).f;
+        if (f.hl || f.red || f.u) d++;
+      }
+      if (!n || d / n < 0.8) continue;
+      it.u = catDong(it.u, 0, chon.index);
+      return chon[1].replace(/\s+/g, ' ').trim();
+    }
+    return null;
+  }
+
+  // câu không có phương án riêng trong nhóm có danh sách lựa chọn chung → câu trắc nghiệm dùng danh sách đó:
+  // nhãn A–F của nhóm ("A⇥Plomin"), bộ TRUE/FALSE/NOT GIVEN, hoặc chữ cái đoạn văn "A–G" (khi đáp án là chữ cái)
+  function ganPANhom(q) {
+    var g = q.nhom;
+    if (!g || q.oTrong || q.items.some(function (it) { return it.vai === 'pair' || (it.vai === 'stem' && it.u.k === 'line' && /\[\[[^\]]*\]\]/.test(it.u.str)); })) return;
+    var v = q.dapAn ? q.dapAn.s : q.keyVal, chu = v != null ? tachChuCai(v) : null;
+    var pa = g.pa.slice().sort(theoNhan);
+    if (pa.length >= 2 && pa.length <= 8 && (v == null || (chu && chu.every(function (c) { return pa.some(function (p) { return p.nhan === c; }); })))) {
+      q.opts = pa.map(function (o) { return saoPA(o, true); });
+      return;
+    }
+    if (g.tap && g.tap.length >= 2) {
+      var k = v != null ? g.tap.indexOf(String(v).replace(/\s+/g, ' ').trim().toUpperCase()) : -1;
+      if (v == null || k >= 0) {
+        q.opts = g.tap.map(function (w, i) { return paChu(String.fromCharCode(65 + i), w); });
+        if (k >= 0) {
+          var nhan = String.fromCharCode(65 + k);
+          if (q.dapAn) q.dapAn = { s: nhan, line: q.dapAn.line }; else q.keyVal = nhan;
+        }
+        return;
+      }
+    }
+    // chữ cái đoạn văn "A–G": câu chưa có đáp án cũng dùng (đáp án điền sau từ file đáp án)
+    if (g.chuCai && (v == null || (chu && String(v).trim().length <= 3 && chu.every(function (c) { return g.chuCai.indexOf(c) >= 0; })))) {
+      q.opts = g.chuCai.map(function (c) { return paChu(c, c); });
+    }
   }
 
   function cungTap(a, b) { return a.length === b.length && a.every(function (x) { return b.indexOf(x) >= 0; }); }
@@ -1504,6 +1999,12 @@
         bao('info', 'nhãn do Word tự đánh số (' + cu + ') đã được đánh lại thành ' + ds.map(function (p) { return p.nhan; }).join(', '));
       }
     });
+
+    if (!q.dapAn && !q.opts.length && !q.stmts.length) {
+      var ngoac = layDapAnNgoac(q);
+      if (ngoac) q.dapAn = { s: ngoac, line: taoDong([{ t: 'text', s: ngoac, f: {} }], 0, '') };
+    }
+    if (!q.the && !q.opts.length && q.stmts.length < 2) ganPANhom(q);
 
     var dapAn = q.dapAn ? q.dapAn.s : null;
     // nhãn sai kiểu chữ: câu [ĐS] mà ghi ý bằng "A. B. C. D." → thành ý a) b)…;
@@ -1535,7 +2036,7 @@
       else if (dapAn != null || q.keyVal != null) loai = coKhoang(dapAn != null ? dapAn : q.keyVal) ? 'num' : 'short';
       else {
         loai = 'essay';
-        if (q.phan && q.phan.loai === 'short') loai = 'short'; // phần "trả lời ngắn" mà thiếu đáp án → báo lỗi thiếu đáp án thay vì đổi thành tự luận
+        if ((q.phan && q.phan.loai === 'short') || q.oTrong) loai = 'short'; // phần "trả lời ngắn" / ô trống đánh số mà thiếu đáp án → báo lỗi thiếu đáp án thay vì đổi thành tự luận
         else if (q.phan && q.phan.loai === 'essay') { /* phần tự luận: đúng ý định, không cần nhắc */ }
         else if (q.stmts.length >= 2) bao('warn', 'có các ý a), b)… nhưng chưa đánh dấu Đúng/Sai — tạm coi là tự luận; nếu là câu Đúng/Sai hãy thêm dòng "Đáp án: ĐSĐS" hoặc thẻ [ĐS]');
         else bao('info', 'chưa có đáp án → tự luận, giáo viên chấm tay');
@@ -1651,10 +2152,12 @@
         if (un.k !== 'line' || un.str.indexOf('[[') < 0) return un;
         var re = /\[\[([^\[\]]*)\]\]/g, mm, toks = [], tu = 0;
         while ((mm = re.exec(un.str))) {
-          var bid = 'b' + (++k);
           var nd = chuThuan(cat(un.toks, mm.index + 2, mm.index + mm[0].length - 2));
+          // mẫu upload: "[[1]]" trỏ tới phần khai báo "[[1]] = 50" + các lựa chọn A) B)… + ANSWER
+          var soO = q.upload && /^\s*\d{1,3}\s*$/.test(nd) ? nd.trim() : null;
+          var bid = soO ? 'b' + soO : 'b' + (++k);
           var phan = nd.split('|').map(function (x) { return x.replace(/\s+/g, ' ').trim(); });
-          dsO.push({ id: bid, phan: phan });
+          dsO.push({ id: bid, phan: phan, soO: soO, dinh: soO && q.oDinh ? q.oDinh[soO] : null });
           toks = toks.concat(cat(un.toks, tu, mm.index));
           toks.push({ t: 'text', s: '[' + bid + ']', f: {} });
           tu = mm.index + mm[0].length;
@@ -1662,15 +2165,17 @@
         return taoDong(toks.concat(cat(un.toks, tu)), un.para, un.jc);
       });
       var coSao2 = dsO.some(function (x) { return x.phan.some(function (p) { return /^\*/.test(p); }); });
+      if (q.upload) dsO.forEach(function (x) { if (x.soO) docODinh(x, loai, bao); });
       if (loai === 'blanks' && coSao2) { loai = 'dropdowns'; Qo.type = loai; if (!tuDong) bao('warn', 'có ô [[*…]] (ô chọn) nên câu được chuyển thành dạng chọn từ danh sách'); }
       if (loai === 'blanks') {
         Qo.blanks = dsO.map(function (x) {
-          var acc = x.phan.filter(Boolean);
+          var acc = x.chap ? x.chap : x.phan.filter(Boolean);
           if (!acc.length) bao('error', 'ô [' + x.id + '] để trống');
           return { id: x.id, accepts: core.answerVariants(acc) };
         });
       } else {
         Qo.dropdowns = dsO.map(function (x) {
+          if (x.chon) return { id: x.id, options: x.chon.options, correct: x.chon.correct };
           var dung = [], opsList = [];
           x.phan.forEach(function (p, i) { if (/^\*/.test(p)) dung.push(i); opsList.push(p.replace(/^\*\s*/, '')); });
           if (!dung.length) bao('error', 'ô [' + x.id + '] chưa đánh dấu lựa chọn đúng (thêm * trước lựa chọn đúng, ví dụ [[*Hà Nội|Huế]])');
@@ -1694,7 +2199,13 @@
     } else if (q.nhieu.length) bao('warn', 'dòng "Nhiễu:" chỉ dùng cho câu ghép nối — đã bỏ qua');
 
     Qo.stem = H.khoi(stemUnits, o);
-    if (q.stim) Qo.stimulus = H.khoi(q.stim.units, o);
+    var dvDan = q.stim ? q.stim.units : chuoiNhom(q.nhom);
+    if (dvDan.length) {
+      // đoạn dẫn dùng chung: cảnh báo (hình vẽ bị bỏ…) chỉ báo ở câu đầu tiên dùng nó
+      var nguonDan = q.stim || q.nhom;
+      Qo.stimulus = (nguonDan.daBaoDan ? new TaoHtml(ctx, dsAnh, function () {}) : H).khoi(dvDan, o);
+      nguonDan.daBaoDan = true;
+    }
 
     /* --- lời giải --- */
     var fb = H.khoi(q.fb, o);
@@ -1712,6 +2223,30 @@
       if (!issues.some(function (y) { return y.msg === x.msg; })) issues.push(x);
     });
     return Qo;
+  }
+
+  // đoạn dẫn của nhóm: lời dặn + đoạn văn của các nhóm lồng nhau (ngoài → trong)
+  function chuoiNhom(g) {
+    var ds = [], out = [];
+    for (; g; g = g.cha) ds.unshift(g);
+    ds.forEach(function (x) { out = out.concat(x.units); });
+    return out;
+  }
+  function chuPA(o) { return o.units.filter(function (u) { return u.k === 'line'; }).map(function (u) { return chuThuan(u.toks); }).join(' ').replace(/\s+/g, ' ').trim(); }
+  // ô [[n]] của mẫu upload: FB → các cách viết đúng (lựa chọn có trọng số dương), SDL → danh sách thả xuống + lựa chọn đúng
+  function docODinh(x, loai, bao) {
+    var d = x.dinh;
+    if (!d || !d.opts.length) { bao('error', 'ô [[' + x.soO + ']] chưa có phần khai báo "[[' + x.soO + ']]" kèm các lựa chọn A) B)…'); x.chap = []; x.chon = { options: [], correct: -1 }; return; }
+    var chu = d.opts.map(chuPA), nhan = d.opts.map(function (o) { return o.nhan; });
+    var dung = d.dapAn != null ? (tachChuCai(d.dapAn) || []) : (chu.length === 1 ? [nhan[0]] : []);
+    if (loai === 'blanks') {
+      x.chap = core.answerVariants(dung.length ? dung.map(function (c) { return chu[nhan.indexOf(c)]; }).filter(function (t) { return t != null && t !== ''; }) : chu);
+      if (!dung.length && chu.length > 1) bao('info', 'ô [[' + x.soO + ']] không có dòng ANSWER — chấp nhận mọi lựa chọn đã liệt kê');
+    } else {
+      var k = dung.length ? nhan.indexOf(dung[0]) : -1;
+      if (k < 0) bao('error', 'ô [[' + x.soO + ']] chưa xác định lựa chọn đúng (dòng ANSWER)');
+      x.chon = { options: chu, correct: k };
+    }
   }
 
   function doiVai(q, tu, sang) { // chuyển phương án ↔ ý (đổi hoa/thường nhãn)
@@ -1746,38 +2281,260 @@
     });
   }
 
+  /* ======================= file đáp án riêng (HDC / KEY / ĐÁP ÁN) ======================= */
+
+  var RE_THIEU_DA = /chưa xác định đáp án đúng|chưa có đáp án|chưa xác định ý nào Đúng\/Sai|chưa xác định Đúng hay Sai|câu một đáp án nhưng có|giáo viên chấm tay/;
+
+  // các mục đáp án (theo thứ tự trong file) → { answers: { khoáPhần: { số câu: đáp án } }, count, issues }
+  // Phần ghi rõ ("Phần I/II/III") → khoá '1','2','3'; không ghi mà số câu lặp lại (đề nhiều phần đánh số lại) → tách
+  // đoạn theo lần lặp và đặt khoá '1','2',…; còn lại khoá ''.
+  function gomKey(raw, fileName) {
+    var ds = [], coPhan = false, issues = [];
+    raw.forEach(function (B) { B.key.forEach(function (e) { if (e.v) { ds.push(e); if (e.phan) coPhan = true; } }); });
+    var doanCua = [];
+    if (!coPhan) {
+      var doan = 0, thay = {}, lap = false;
+      ds.forEach(function (e, i) {
+        if (thay[e.no]) { doan++; thay = {}; lap = true; }
+        thay[e.no] = 1;
+        doanCua[i] = doan;
+      });
+      if (!lap) doanCua = [];
+    }
+    var answers = {}, count = 0, demPhan = {}, tuBang = 0, giongKey = 0, chat = 0;
+    ds.forEach(function (e, i) {
+      var p = coPhan ? e.phan : (doanCua.length ? String(doanCua[i] + 1) : '');
+      var m = answers[p] || (answers[p] = {});
+      if (hasOwn(m, e.no)) {
+        if (m[e.no] !== e.v) issues.push(core.newIssue('warn', 'File đáp án ghi câu ' + e.no + (p ? ' (phần ' + p + ')' : '') + ' hai lần khác nhau ("' + rutGon(m[e.no], 20) + '" và "' + rutGon(e.v, 20) + '") — dùng lần đầu'));
+        return;
+      }
+      m[e.no] = e.v; count++;
+      if (e.bang) tuBang++;
+      if (laGiaTriKey(e.v)) giongKey++;
+      if (laGiaTriKey(e.v, true)) chat++;
+      demPhan[p] = (demPhan[p] || 0) + 1;
+    });
+    var moTa = Object.keys(demPhan).map(function (p) { return (p ? 'phần ' + p + ': ' : '') + demPhan[p] + ' câu'; }).join(', ');
+    if (count) issues.unshift(core.newIssue('info', 'File "' + fileName + '" là file đáp án / hướng dẫn chấm: đọc được ' + count + ' đáp án (' + moTa + ') — nạp cùng file đề để tự điền đáp án cho các câu còn thiếu'));
+    return { answers: answers, count: count, issues: issues, fileName: fileName, tuBang: tuBang, giongKey: giongKey, chat: chat,
+      coTieuDe: raw.some(function (B) { return B.tieuDeDA; }) };
+  }
+  // giá trị trông như đáp án (chữ cái, Đ/S, số, từ ngắn) — để không nhầm đề ngắn chưa có đáp án ("Câu 1. Tính 2 + 2.") là file đáp án
+  // chat: chỉ nhận chữ cái phương án, Đ/S từng ý, số, TRUE/FALSE/NOT GIVEN/YES/NO
+  function laGiaTriKey(v, chat) {
+    v = String(v).trim();
+    if (/^\*?[A-H](?:\s*[,;&]?\s*[A-H])*\.?$/.test(v) || /^[-+−]?\d+(?:[.,]\d+)?$/.test(v) || /^(?:TRUE|FALSE|NOT GIVEN|YES|NO)$/i.test(v)) return true;
+    if (/^(?:[a-h]\s*[).:\-]?\s*)?[ĐSTFđs](?:\s*[;,]?\s*(?:[a-h]\s*[).:\-]?\s*)?[ĐSTFđs])*$/.test(v)) return true;
+    return !chat && v.length <= 25 && v.split(/\s+/).length <= 3 && !/[.?!:]$/.test(v);
+  }
+
+  function khoaPhanCua(q) {
+    var p = q && q.meta && q.meta.part ? gap(String(q.meta.part)) : '';
+    var m = /^\s*phan\s+([ivxlc]+|\d{1,2})(?![a-z\d])/.exec(p) || /^\s*([ivx]{1,4}|\d{1,2})\s*[.)\-–:]/.exec(p);
+    return m ? (/^\d+$/.test(m[1]) ? String(+m[1]) : String(soLaMa(m[1]))) : '';
+  }
+  function timKey(ans, pk, no) {
+    var ds = Object.keys(ans);
+    var lay = function (p, n) { return ans[p] && hasOwn(ans[p], n) ? { v: ans[p][n], khoa: [p + '|' + n] } : null; };
+    var tim1 = function (n) {
+      if (pk && ans[pk]) return lay(pk, n);
+      return lay('', n) || (ds.length === 1 ? lay(ds[0], n) : null);
+    };
+    var m = /^(\d+)\s*-\s*(\d+)$/.exec(no);
+    if (m) { // câu gộp phạm vi "21-22" (chọn HAI chữ cái): nối đáp án của từng số
+      var vs = [], khoa = [];
+      for (var n = +m[1]; n <= +m[2]; n++) {
+        var x = tim1(String(n));
+        if (!x) return tim1(no);
+        vs.push(x.v); khoa = khoa.concat(x.khoa);
+      }
+      return { v: vs.join(', '), khoa: khoa };
+    }
+    return tim1(no);
+  }
+  function chuHtml(h) {
+    return String(h || '').replace(/<math[\s\S]*?<\/math>/g, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  }
+  function soSanh(s) { return core.nfc(String(s)).toLowerCase().replace(/\s+/g, ' ').replace(/[.。]+$/, '').trim(); }
+
+  // điền một đáp án vào câu (mô hình §1) — trả { kq: 'dien'|'trung'|'xung'|'lech'|'bo', msg?, level? }
+  function dienDapAn(q, v) {
+    v = String(v == null ? '' : v).replace(RE_SO_KEY_G, '').trim();
+    if (!v) return { kq: 'bo' };
+    var t = q.type;
+    if (t === 'mc' || t === 'ma') {
+      var ch = Array.isArray(q.choices) ? q.choices : [];
+      var theoChu = ch.filter(function (c) { return c && soSanh(chuHtml(c.html)) === soSanh(v); });
+      var ds = theoChu.length === 1 ? [theoChu[0].id] : tachChuCai(v);
+      if (!ds || !ds.length) return { kq: 'lech', msg: 'file đáp án ghi "' + rutGon(v, 30) + '" — không khớp phương án nào' };
+      var la = ds.filter(function (c) { return !ch.some(function (x) { return x && x.id === c; }); });
+      if (la.length) return { kq: 'lech', msg: 'file đáp án ghi ' + la.join(', ') + ' nhưng câu chỉ có phương án ' + ch.map(function (c) { return c && c.id; }).join(', ') };
+      var co = ch.filter(function (c) { return c && c.correct === true; }).map(function (c) { return c.id; });
+      if (co.length) return cungTap(co, ds) ? { kq: 'trung' } : { kq: 'xung', msg: 'file đáp án ghi ' + ds.join(', ') + ' nhưng trong đề đánh dấu ' + co.join(', ') + ' — giữ ' + co.join(', ') };
+      ch.forEach(function (c) { if (c) c.correct = ds.indexOf(c.id) >= 0; });
+      if (ds.length >= 2) q.type = 'ma';
+      return { kq: 'dien' };
+    }
+    if (t === 'tf') {
+      var st = Array.isArray(q.statements) ? q.statements : [], keys = st.map(function (s) { return s.key; });
+      var r = docDungSai(v, keys);
+      if (!r) return { kq: 'lech', msg: 'file đáp án ghi "' + rutGon(v, 30) + '" — không đọc được Đúng/Sai' };
+      if (st.length && st.every(function (s) { return typeof s.value === 'boolean'; })) {
+        var khac = st.filter(function (s) { return hasOwn(r.map, s.key) && !!r.map[s.key] !== s.value; });
+        return khac.length ? { kq: 'xung', msg: 'file đáp án khác các ý đã đánh dấu (' + khac.map(function (s) { return s.key + ')'; }).join(', ') + ') — giữ đánh dấu trong đề' } : { kq: 'trung' };
+      }
+      st.forEach(function (s) { if (hasOwn(r.map, s.key)) s.value = !!r.map[s.key]; });
+      return { kq: 'dien' };
+    }
+    if (t === 'short') {
+      var moi = core.answerVariants(tachCachViet(v));
+      var cu = (Array.isArray(q.answers) ? q.answers : []).filter(function (a) { return String(a).trim(); });
+      if (cu.length) {
+        var giao = cu.some(function (a) { return moi.some(function (b) { return soSanh(a) === soSanh(b); }); });
+        return giao ? { kq: 'trung' } : { kq: 'xung', msg: 'file đáp án ghi "' + rutGon(v, 30) + '" nhưng trong đề là "' + rutGon(cu[0], 30) + '" — giữ đáp án trong đề' };
+      }
+      q.answers = moi;
+      return { kq: 'dien' };
+    }
+    if (t === 'num') {
+      var nu = docDapAnSo(v);
+      if (!nu) return { kq: 'lech', msg: 'file đáp án ghi "' + rutGon(v, 30) + '" — không phải số' };
+      if (q.numeric && typeof q.numeric === 'object' && (q.numeric.exact !== undefined || q.numeric.min !== undefined)) {
+        return JSON.stringify(q.numeric) === JSON.stringify(nu) ? { kq: 'trung' } : { kq: 'xung', msg: 'file đáp án ghi ' + v + ' khác đáp án trong đề — giữ đáp án trong đề' };
+      }
+      q.numeric = nu;
+      return { kq: 'dien' };
+    }
+    if (t === 'essay') {
+      var tu = v.split(/\s+/).filter(Boolean).length;
+      if (v.length <= 40 && tu <= 4 && !/[.!?]$/.test(v) && v.indexOf('\n') < 0) { // đáp án ngắn → trả lời ngắn chấm tự động
+        q.type = 'short';
+        q.answers = core.answerVariants(tachCachViet(v));
+        return { kq: 'dien' };
+      }
+      if (soSanh(chuHtml(q.feedback)).indexOf(soSanh(v.split('\n')[0])) >= 0) return { kq: 'trung' };
+      q.feedback = '<p>Đáp án: ' + escText(v).replace(/\n/g, '<br>') + '</p>' + (q.feedback || '');
+      return { kq: 'dien', level: 'info', msg: 'đáp án trong file đáp án được đưa vào lời giải (câu tự luận — giáo viên chấm tay)' };
+    }
+    return { kq: 'bo', level: 'info', msg: 'câu loại ' + t + ' không điền được từ file đáp án — giữ nguyên' };
+  }
+  function tenCauCua(q) { return String(q.title || ('Câu ' + q.no)).replace(/\s*\[[^\]]*\]\s*$/, ''); }
+  function lamMoiLoi(q, them) {
+    var giu = (Array.isArray(q.issues) ? q.issues : []).filter(function (i) { return !RE_THIEU_DA.test(i.msg); });
+    if (them) giu.push(core.newIssue(them.level, tenCauCua(q) + ': ' + them.msg, q.id));
+    core.validateQuestion(q).forEach(function (x) { if (!giu.some(function (y) { return y.msg === x.msg; })) giu.push(x); });
+    q.issues = giu;
+  }
+
+  // Điền đáp án từ file đáp án vào các câu còn thiếu; câu đã có đáp án mà khác → cảnh báo, giữ đáp án trong đề.
+  // banks: [Bank] (sửa trực tiếp), key: kết quả parseAnswerKey (hoặc { answers }). Trả thống kê + issues.
+  function applyAnswerKey(banks, key) {
+    var ans = key && key.answers ? key.answers : (key || {});
+    var out = { matched: 0, filled: 0, same: 0, conflicts: 0, mismatched: 0, unused: [], issues: [] };
+    var daDung = {};
+    (Array.isArray(banks) ? banks : [banks]).forEach(function (b) {
+      if (!b || !Array.isArray(b.questions)) return;
+      b.questions.forEach(function (q) {
+        if (!q || q.type === 'text') return;
+        var tim = timKey(ans, khoaPhanCua(q), String(q.no));
+        if (!tim) return;
+        out.matched++;
+        tim.khoa.forEach(function (k) { daDung[k] = 1; });
+        var r = dienDapAn(q, tim.v);
+        if (r.kq === 'dien') out.filled++;
+        else if (r.kq === 'trung') out.same++;
+        else if (r.kq === 'xung') out.conflicts++;
+        else if (r.kq === 'lech') out.mismatched++;
+        if (r.kq === 'trung' || (r.kq === 'bo' && !r.msg)) return;
+        lamMoiLoi(q, r.msg ? { level: r.level || 'warn', msg: r.msg } : null);
+      });
+    });
+    Object.keys(ans).forEach(function (p) {
+      Object.keys(ans[p]).forEach(function (n) { if (!daDung[p + '|' + n]) out.unused.push((p ? p + '.' : '') + n); });
+    });
+    if (out.unused.length) {
+      out.issues.push(core.newIssue('warn', 'File đáp án có ' + out.unused.length + ' câu không khớp câu nào trong đề (' + rutGon(out.unused.join(', '), 60) + ')'));
+    }
+    if (out.matched) out.issues.unshift(core.newIssue('info', 'Đã khớp ' + out.matched + ' câu với file đáp án: điền ' + out.filled + ', trùng ' + out.same + ', khác ' + out.conflicts + (out.mismatched ? ', không khớp phương án ' + out.mismatched : '')));
+    return out;
+  }
+
+  // tên file bỏ các chữ chỉ đáp án (HDC, KEY, ĐÁP ÁN, Hướng dẫn chấm…) — để ghép file đáp án với file đề
+  var TU_DA = [['hdc'], ['hd', 'cham'], ['huong', 'dan', 'cham'], ['dap', 'an'], ['dapan'], ['da'], ['key'], ['answer', 'key'], ['answers'], ['answer'], ['loi', 'giai']];
+  function tachTen(name) {
+    var t = gap(core.nfc(String(name || '').replace(/^.*[\\\/]/, '').replace(/\.(docx|docm|dotx|dotm)$/i, '')));
+    return t.split(/[\s._\-()\[\]]+/).filter(Boolean);
+  }
+  function boTuDapAn(tk) {
+    var out = [], co = false;
+    for (var i = 0; i < tk.length;) {
+      var khop = TU_DA.filter(function (w) { return w.every(function (x, j) { return tk[i + j] === x; }); }).sort(function (a, b) { return b.length - a.length; })[0];
+      if (khop) { co = true; i += khop.length; continue; }
+      out.push(tk[i]); i++;
+    }
+    return { tk: out, co: co };
+  }
+  function laTenDapAn(name) { return boTuDapAn(tachTen(name)).co; }
+  function tenGocDapAn(name) { return boTuDapAn(tachTen(name)).tk.join('.'); }
+
   /* ======================= API ======================= */
 
-  async function parseDocx(u8, opts) {
-    opts = opts || {};
+  // mở gói .docx → các đơn vị (dòng/bảng); lỗi → { loi: [Issue] }
+  async function moTaiLieu(u8, opts) {
     var fileName = opts.fileName || 'Ngan-hang.docx';
     var tenFile = String(fileName).replace(/^.*[\\\/]/, '').replace(/\.(docx|docm|dotx|dotm)$/i, '').trim() || 'Ngân hàng câu hỏi';
-    var issues = [];
     if (u8 instanceof ArrayBuffer) u8 = new Uint8Array(u8);
-    if (!u8 || !u8.length) return { banks: [], issues: [core.newIssue('error', 'File "' + fileName + '" rỗng')] };
+    if (!u8 || !u8.length) return { loi: [core.newIssue('error', 'File "' + fileName + '" rỗng')] };
     if (u8[0] === 0xD0 && u8[1] === 0xCF && u8[2] === 0x11 && u8[3] === 0xE0) {
-      return { banks: [], issues: [core.newIssue('error', 'File "' + fileName + '" là định dạng Word cũ (.doc) hoặc đang đặt mật khẩu — hãy mở bằng Word, bỏ mật khẩu và Lưu thành (Save As) .docx')] };
+      return { loi: [core.newIssue('error', 'File "' + fileName + '" là định dạng Word cũ (.doc) hoặc đang đặt mật khẩu — hãy mở bằng Word, bỏ mật khẩu và Lưu thành (Save As) .docx')] };
     }
     var files;
     try { files = await zip.readZip(u8); } catch (e) {
-      return { banks: [], issues: [core.newIssue('error', 'Không đọc được file Word "' + fileName + '": ' + (e && e.message || e))] };
+      return { loi: [core.newIssue('error', 'Không đọc được file Word "' + fileName + '": ' + (e && e.message || e))] };
     }
     var goi = new Goi(files);
     var docPath = 'word/document.xml';
     var goc = goi.rels('');
     for (var k in goc) if (hasOwn(goc, k) && /\/officeDocument$/.test(goc[k].type) && goi.lay(goc[k].target)) docPath = goc[k].target;
     var docXml = goi.xml(docPath);
-    if (!docXml) return { banks: [], issues: [core.newIssue('error', 'File "' + fileName + '" không phải tài liệu Word hợp lệ (thiếu word/document.xml)')] };
+    if (!docXml) return { loi: [core.newIssue('error', 'File "' + fileName + '" không phải tài liệu Word hợp lệ (thiếu word/document.xml)')] };
     var body = core.find(docXml, 'w:body') || docXml;
-
     var mt = { latex: opts.latex !== undefined ? opts.latex : layMoDun('latex'), math: opts.math !== undefined ? opts.math : layMoDun('math') };
     var ctx = new Ctx(goi, docPath);
-    var blocks = duyetKhoi(body, ctx, []);
-    var units = taoDonVi(blocks, mt);
-    var raw = phanTich(units, ctx, mt, tenFile);
-    issues = issues.concat(ctx.canhBao);
+    var units = taoDonVi(duyetKhoi(body, ctx, []), mt);
+    return { fileName: fileName, tenFile: tenFile, ctx: ctx, mt: mt, units: units };
+  }
+
+  // câu "thật" của đề (có phương án/ý, hoặc nội dung đủ dài) — để phân biệt file đề với file chỉ có đáp án
+  function laCauThat(q) {
+    return (q.choices && q.choices.length >= 2) || (q.statements && q.statements.length >= 2) || chuHtml(q.stem).replace(/\s+/g, ' ').trim().length >= 40;
+  }
+
+  function coDapAn(q) {
+    switch (q.type) {
+      case 'mc': case 'ma': return (q.choices || []).some(function (c) { return c && c.correct === true; });
+      case 'tf': return (q.statements || []).length > 0 && q.statements.every(function (x) { return typeof x.value === 'boolean'; });
+      case 'short': return (q.answers || []).length > 0;
+      case 'num': return !!q.numeric;
+      case 'essay': case 'text': return false;
+      default: return true;
+    }
+  }
+
+  async function parseDocx(u8, opts) {
+    opts = opts || {};
+    var d = await moTaiLieu(u8, opts);
+    if (d.loi) return { banks: [], issues: d.loi };
+    var fileName = d.fileName, ctx = d.ctx, mt = d.mt;
+    var raw = phanTich(d.units.slice(), ctx, mt, d.tenFile);
+    var issues = [].concat(ctx.canhBao);
 
     var banks = raw.map(function (B) {
+      var viDu = B.cau.filter(function (q) { return q.viDu; }).length;
+      B.cau = B.cau.filter(function (q) { return !q.viDu; });
+      if (viDu) B.warnings.push(core.newIssue('info', 'Bỏ qua ' + viDu + ' câu ví dụ (đánh số 0)'));
       apDungKey(B);
       var dem = {};
       B.cau.forEach(function (q) { dem[q.no] = (dem[q.no] || 0) + 1; });
@@ -1792,19 +2549,60 @@
         B.warnings.push(core.newIssue('info', 'Bỏ qua ' + le.length + ' đoạn nằm ngoài câu hỏi' + (vd ? ' (ví dụ: "' + rutGon(chuThuan(vd.toks)) + '")' : '')));
       }
       if (!questions.length) B.warnings.push(core.newIssue('warn', 'Ngân hàng "' + B.title + '" chưa có câu hỏi nào (mỗi câu bắt đầu bằng "Câu 1.", "Câu 2."…)'));
+      var tuLuanTrong = questions.filter(function (q) { return q.type === 'essay' && !q.feedback; }).length;
+      if (B.cheDo === 'so' && questions.length >= 5 && tuLuanTrong >= 0.8 * questions.length) {
+        B.warnings.push(core.newIssue('warn', tuLuanTrong + '/' + questions.length + ' mục đánh số không có phương án hay đáp án nên thành câu tự luận — nếu file này không phải đề thi thì bỏ qua; nếu là đề, hãy đánh dấu đáp án hoặc nạp kèm file đáp án'));
+      }
       return {
         title: B.title, ident: core.bankIdent(B.title), source: { kind: 'docx', name: fileName },
         questions: questions, images: images, warnings: B.warnings
       };
     });
+
+    // file chỉ có đáp án (HDC / KEY / ĐÁP ÁN): trả khoá đáp án thay cho ngân hàng
+    var nThat = 0, nPA = 0, nCau = 0, nCoDA = 0;
+    banks.forEach(function (b) {
+      b.questions.forEach(function (q) {
+        nCau++;
+        if (coDapAn(q)) nCoDA++;
+        if (laCauThat(q)) nThat++;
+        if ((q.choices && q.choices.length >= 2) || (q.statements && q.statements.length >= 2)) nPA++;
+      });
+    });
+    var tenDA = laTenDapAn(fileName);
+    if (nThat <= 5 || (tenDA && !nPA)) {
+      var key = gomKey(phanTich(d.units.slice(), ctx, mt, d.tenFile, { chiDapAn: true }), fileName);
+      if (key.count >= 3 && nCoDA * 3 <= key.count && (key.tuBang >= 3 || key.giongKey >= 0.6 * key.count) &&
+          key.chat >= 0.3 * key.count && (tenDA || key.coTieuDe || key.chat >= 0.7 * key.count) && (nThat * 3 <= key.count || (tenDA && !nPA && key.count >= nCau))) {
+        return { banks: [], issues: issues.concat(key.issues), keyOnly: true, key: key };
+      }
+    }
+    if (opts.answerKey) {
+      [].concat(opts.answerKey).forEach(function (k) { if (k) issues = issues.concat(applyAnswerKey(banks, k).issues); });
+    }
     if (!banks.some(function (b) { return b.questions.length; })) {
       issues.push(core.newIssue('error', 'Không tìm thấy câu hỏi nào trong "' + fileName + '" — mỗi câu phải bắt đầu bằng "Câu 1.", "Câu 2."… và (nếu có) đặt sau dòng "NGÂN HÀNG: <tên>"'));
     }
     return { banks: banks, issues: issues };
   }
 
+  // Đọc file đáp án riêng (HDC/KEY/ĐÁP ÁN): bảng số câu + chữ cái, "Câu 1: A", bảng THPT 2025 Phần I/II/III
+  // (Đúng/Sai từng ý, ô số trả lời ngắn) → { answers: { khoáPhần|'': { số: đáp án } }, count, issues }
+  async function parseAnswerKey(u8, opts) {
+    opts = opts || {};
+    var d = await moTaiLieu(u8, opts);
+    if (d.loi) return { answers: {}, count: 0, issues: d.loi, fileName: opts.fileName || '' };
+    var key = gomKey(phanTich(d.units.slice(), d.ctx, d.mt, d.tenFile, { chiDapAn: true }), d.fileName);
+    if (!key.count) key.issues.push(core.newIssue('error', 'Không đọc được đáp án nào trong "' + d.fileName + '" (cần bảng số câu – đáp án, hoặc các dòng "Câu 1: A")'));
+    return key;
+  }
+
   return {
     parseDocx: parseDocx,
+    parseAnswerKey: parseAnswerKey,
+    applyAnswerKey: applyAnswerKey,
+    isAnswerKeyName: laTenDapAn,
+    answerKeyBaseName: tenGocDapAn,
     // để test
     _gap: gap, _tachChuCai: tachChuCai, _docDungSai: docDungSai, _docDapAnSo: docDapAnSo, _tachCapKey: tachCapKey,
     _nhanDangAnh: nhanDangAnh

@@ -530,6 +530,26 @@ test('itemfeedback: ident lạ / không ứng phương án / displayfeedback tr�
   assert.ok(!codes(r).includes('feedback-id'), kq.formatReport(r));
 });
 
+test('html-escaped-text: text/html chỉ có chữ chứa & < > / dấu cách cứng (phương án, vế trái, lời giải) → cảnh báo', () => {
+  // phương án <p>1 &amp; 2</p>: Canvas lưu "1 &amp; 2" vào trường chữ → học sinh thấy "&amp;"
+  phaiCo(motItem('mc', 'texttype="text/plain">1 &amp; 2<', 'texttype="text/html">&lt;p&gt;1 &amp;amp; 2&lt;/p&gt;<'), 'html-escaped-text', 'warn');
+  // lời giải <p>2 &lt; 3</p> (bọc <div><p>, có <br> cuối)
+  phaiCo(motItem('mc', 'Vì ½ + 0,5 = 1.', '&lt;div&gt;&lt;p&gt;2 &amp;lt; 3&lt;br&gt;&lt;/p&gt;&lt;/div&gt;'), 'html-escaped-text', 'warn');
+  phaiCo(motItem('mc', 'Vì ½ + 0,5 = 1.', 'a&amp;nbsp;b'), 'html-escaped-text', 'warn');
+  // vế trái ghép nối
+  phaiCo(motItem('match', '<mattext texttype="text/plain">Hà Nội</mattext>', '<mattext texttype="text/html">&lt;span&gt;Hà Nội &amp;gt; Huế&lt;/span&gt;</mattext>'), 'html-escaped-text', 'warn');
+  // có thẻ thật (strong, span có thuộc tính) hoặc chữ không có & < > → không báo; text/plain → không báo
+  for (const [k, tu, thanh] of [
+    ['mc', 'texttype="text/plain">1 &amp; 2<', 'texttype="text/html">&lt;strong&gt;1 &amp;amp; 2&lt;/strong&gt;<'],
+    ['mc', 'texttype="text/plain">1 &amp; 2<', 'texttype="text/html">&lt;span style="color:red"&gt;1 &amp;amp; 2&lt;/span&gt;<'],
+    ['mc', 'Vì ½ + 0,5 = 1.', 'Chỉ có chữ thường'],
+    ['mc', 'texttype="text/plain">1 &amp; 2<', 'texttype="text/plain">1 &amp; 2<']
+  ]) {
+    const r = kq.checkPackage(motItem(k, tu, thanh));
+    assert.ok(!codes(r).includes('html-escaped-text'), thanh + '\n' + kq.formatReport(r));
+  }
+});
+
 /* ---------------- theo loại ---------------- */
 
 test('MC: không có Set 100 → no-correct (mô phỏng get_response_weight)', () => {

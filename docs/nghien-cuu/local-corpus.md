@@ -91,30 +91,30 @@ These are the template's own field names. Fields that exist only in the older fo
 - `note` "Nguồn đề: <b>Đề thi tham khảo HSA 2025</b> — …"
 - `rules` [html strings]
 - `LOCK` {enabled, pin, pinHash, blockShortcuts, graceMs, warnLimit}
-- Older formats: `EXAM_INFO.ptI/ptII/ptIII` (K12), `ATOM_INFO` → `EXAM.note` "Cho nguyên tử khối … Cl = 35,5; …", `TEACHER_PIN`.
+- Older formats: `EXAM_INFO.ptI/ptII/ptIII` (K12), `ATOM_INFO` → `EXAM.note` "Cho nguyên tử khối …", `TEACHER_PIN`.
 
 **PART**
 - `label` "PHẦN I", `sub` "Trắc nghiệm nhiều phương án lựa chọn", `note` "Thí sinh trả lời từ câu 1 đến câu 18…", `points` "4,5 điểm"
-- `passage` {head "READING PASSAGE 1", title "Water Filter", sub "Satellite technology is helping…", intro "You should spend about 20 minutes…", paras [{k:"A", t:"An ingenious invention…"}]}
-- Older formats: `key` "I", `short` "Phần I", part-level `type` (K12); `id`, `icon` "🔤", `title`, `subtitle`, `readingTitle` "My new pet", `image` "images/dog.jpg", `passage` (HTML string) (kid-adv); `roman` "I. PHONETICS", `no` (K4).
+- `passage` {head "READING PASSAGE 1", title "…", sub "…", intro "You should spend about 20 minutes…", paras [{k:"A", t:"An ingenious invention…"}]}
+- Older formats: `key` "I", `short` "Phần I", part-level `type` (K12); `id`, `icon` "🔤", `title`, `subtitle`, `readingTitle` "…", `image` "images/dog.jpg", `passage` (HTML string) (kid-adv); `roman` "I. PHONETICS", `no` (K4).
 
 **GROUP**
 - `head` "Câu 48 – 50"
 - `instr` ["Dựa vào thông tin cung cấp dưới đây để trả lời các câu hỏi từ 48 đến 50."]
 - `type`, `perItem` 0.25
-- `pre` `<p style="margin:0 0 14px">Vào ngày 31 tháng 12 …`
+- `pre` `<p style="margin:0 0 14px">…`
 - `one` true, `cols` 3, `pics` true, `giuThuTu` true
 - `opts` shared by all questions: strings ["Yes","No"] or {k,t} `TFNG [{k:"TRUE",t:"TRUE"},…]`
 - `example`:
-  - mcq: {q:"<b>0.</b> Jenny ________ …", opts:["do","doesn’t","don’t"], ans:"B"}
-  - bank: {q, ans:"LED lights"}
+  - mcq: {q:"<b>0.</b> … ________ …", opts:["do","doesn’t","don’t"], ans:"B"}
+  - bank: {q, ans:"…"}
   - select: {label:"Paragraph A", ans:"ix"}
-- flow: `title` "Guide to Making Water Filters"; `steps` [{html:"<b>Step one:</b> Combination of {{1}} and …"}, {arrow:"Sun dried"}]
-- gap: `lines` ["Initially, orbiting satellites were used to measure {{23}} …"]
-- bank: `bank` ["go to bed","play soccer",…]
-- letters: `keys` ["A",…,"G"]; `people` [{k:"A",t:"Plomin"}]
-- select: `listTitle` "List of Headings"; `list` [{k:"i",t:"Low probability triggers unpersuasive findings"}]
-- multi: `pick` 2, `nums` [21,22], group-level `ans` ["B","D"], `opts` [{k:"A",t:"Sevepi"}…]
+- flow: `title` "…"; `steps` [{html:"<b>Step one:</b> … {{1}} …"}, {arrow:"…"}]
+- gap: `lines` ["… {{23}} …"]
+- bank: `bank` ["…","…",…]
+- letters: `keys` ["A",…,"G"]; `people` [{k:"A",t:"<tên>"}]
+- select: `listTitle` "List of Headings"; `list` [{k:"i",t:"<tiêu đề>"}]
+- multi: `pick` 2, `nums` [21,22], group-level `ans` ["…","…"], `opts` [{k:"A",t:"…"}…]
 - Added by the conversion: `points` (K4); `bankImg`/`exactMatch`/`exampleKey` (kid-adv); `partial` (order); `_origType`.
 
 **ITEM**
@@ -126,9 +126,9 @@ These are the template's own field names. Fields that exist only in the older fo
 - `q2` "Khẳng định nào sau đây về số cực trị…"
 - `hint` "nhập phân số dạng a/b, hoặc số thập phân"
 - `one` true
-- `sub` [{k:"a", ans:"Đ", t:"Để tăng hiệu suất chiết ethyl acetate…"}]
+- `sub` [{k:"a", ans:"Đ", t:"<phát biểu a>…"}]
 - `seg` [{t:"You "},{t:"must",k:"A"},…]
-- Older formats: `alt` ["oil spills"] (K4); `prompt`, `opts[{k,img}]`, `cue` "in front of", `img`, `target` ["a","b","c","d"], `chunks` [{id:"c",t:"the box"}] (kid-adv order); `options`, `answer` "60", `unit` "viên bi", `visual` "triangle" (kid-math; converted to `table` = figure HTML plus `ansText`).
+- Older formats: `alt` ["…"] (K4); `prompt`, `opts[{k,img}]`, `cue` "…", `img`, `target` ["a","b","c","d"], `chunks` [{id:"c",t:"…"}] (kid-adv order); `options`, `answer` "60", `unit` "viên bi", `visual` "triangle" (kid-math; converted to `table` = figure HTML plus `ansText`).
 
 ## 3. HTML inside question text (counts across the 9 distinct packages)
 **Tags**
@@ -200,7 +200,7 @@ These are the template's own field names. Fields that exist only in the older fo
 
 ## 4. Shared stimulus a question needs to make sense on its own
 - **Group `pre`:**
-  - HSA TOÁN 48–50 (kangaroo exponential model, `P = P<sub>0</sub>e<sup><i>kt</i></sup>`)
+  - HSA TOÁN 48–50 (exponential population model)
   - VĂN 66–70, 71–75, 86–90, 91–95, 96–100 (`doan` excerpts, 1.2–1.8 KB each)
   - ANH 631–635 (cloze; the questions themselves have `q:""`), 636–640, 641–645 (passages up to 2.5 KB)
   - K2MD01: picture strip for bank 6–10; example blocks for letters 11–15 and short 36–40
@@ -213,7 +213,7 @@ These are the template's own field names. Fields that exist only in the older fo
 - **Text inside a single question:** VĂN 76–85 and ANH 619–622 carry their own `doan` text.
 - **Part `passage`:**
   - K10: 3 passages of paragraphs A–G; letters 14–20 and the select headings refer to paragraph letters.
-  - K2MD01: one passage holds **two** texts. "My new pet" goes with 26–30; "My house" goes with 31–35.
+  - K2MD01: one passage holds **two** texts. the first goes with 26–30, the second with 31–35.
   - kid-adv: reading/yesno passage with `blank-no` numbers.
 - **Group-level elements the question cannot stand without:** the K10 flow chart steps and arrows, gap lines, select `list` (10 headings), letters `people` list, multi `opts`, bank word lists (kid-adv words also have images).
 - **Exam-level:** K12 `EXAM.note` atomic masses, needed for calculation questions (short 2 and 6; true/false 1d, 2d, 3d). HSA `EXAM.note` is only the source credit.
@@ -224,7 +224,7 @@ These are the template's own field names. Fields that exist only in the older fo
    - K12 `normShort` removes **all** spaces and treats `.` as `,`.
    - K4 `bankOk` uses `ans` plus `alt[]` and ignores articles.
    - kid-adv and kid-math compare **exactly**.
-   - Canvas will not apply these rules, so the converter must list the variants explicitly (curly vs straight apostrophe in K2 36–40 and kid-adv; "Henri Doulce" capitals; "micro-arrays/microarrays/micro arrays/micro-array").
+   - Canvas will not apply these rules, so the converter must list the variants explicitly (curly vs straight apostrophe in K2 36–40 and kid-adv; proper-noun capitals; hyphen/space/joined spellings of one term).
 2. **Comma decimals and fractions:** `["12,5","12.5"]`, `["7,35","7.35"]`, and TOÁN 9/23/27 `["8/3","2,67","2.67","2,666","2,6667"]`, `["4/3",…]`, `["31/12",…]`. A fraction answer cannot go into a purely numeric question type, and truncated decimals (2,666 but not 2,7) need either a tolerance or exact strings. The hint "dùng dấu phẩy" tells students to type commas.
 3. **True/false ladder** (K12 only): 4 statements, 0/0.1/0.25/0.5/1 for 0–4 correct (`EXAM_INFO.ptII`). This is not linear partial credit.
 4. **multi:** one group, `nums:[21,22]`, `pick:2`, answer at group level `["B","D"]`. 1 point per correct letter, no penalty for wrong picks, and choosing more than `pick` drops the oldest choice. It is one question that counts as 2 question numbers; when encrypted the group `ans` is a single index into `KEYS`.
@@ -235,7 +235,7 @@ These are the template's own field names. Fields that exist only in the older fo
    - kid-adv `letterMatch` bank item `{v:"F",t:"eating",example:true}` (F stays in `keys`); K2MD01 F is the example and its `pre` notes an extra answer
 6. **letters:**
    - K10 14–20 has no names list (answers are paragraph letters A–G, "may use any letter more than once").
-   - K10 33–37 has `people` A–F (Plomin…Wendy Johnson).
+   - K10 33–37 has `people` A–F (researcher names).
    - K2MD01 / kid-adv `people` is a word list A–G with one distractor.
 7. **select:** 10 headings (i–x) for 6 questions plus an example; heading keys are roman numerals.
 8. **mistake** (K4 19–20): 4 `seg` pieces with keys A–D in sentence order. The underlined text is the option text and is drawn as underline plus a red superscript letter.

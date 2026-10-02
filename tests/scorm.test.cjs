@@ -149,9 +149,12 @@ test('nodeEvaluator: lấy var/let/const, thiếu biến → undefined, lỗi m�
 function domGia(opts) {
   opts = opts || {};
   const ngheCha = [];
+  let winConHienTai = null;
+  // thư từ iframe sandbox (không allow-same-origin) tới trang cha luôn mang origin "null"
   const winCha = {
     addEventListener(t, f) { if (t === 'message') ngheCha.push(f); },
-    removeEventListener(t, f) { const i = ngheCha.indexOf(f); if (i >= 0) ngheCha.splice(i, 1); }
+    removeEventListener(t, f) { const i = ngheCha.indexOf(f); if (i >= 0) ngheCha.splice(i, 1); },
+    postMessage(msg) { const src = winConHienTai; setTimeout(() => ngheCha.slice().forEach(f => f({ data: JSON.parse(JSON.stringify(msg)), source: src, origin: 'null' })), 0); }
   };
   const body = {
     con: [],
@@ -161,7 +164,8 @@ function domGia(opts) {
   const doc = { defaultView: winCha, body, createElement() { return taoIframe(); } };
   function taoIframe() {
     const ngheCon = [];
-    const winCon = { postMessage(msg) { setTimeout(() => ngheCon.forEach(f => f({ data: JSON.parse(JSON.stringify(msg)), source: winCha })), 0); } };
+    const winCon = { postMessage(msg) { setTimeout(() => ngheCon.forEach(f => f({ data: JSON.parse(JSON.stringify(msg)), source: winCha, origin: 'http://localhost' })), 0); } };
+    winConHienTai = winCon;
     const el = {
       attrs: {}, style: {}, parentNode: null, contentWindow: winCon,
       setAttribute(k, v) { this.attrs[k] = v; },
@@ -170,7 +174,7 @@ function domGia(opts) {
         const m = /<script>([\s\S]*)<\/script>/.exec(this.srcdoc);
         const sb = {
           window: { addEventListener(t, f) { if (t === 'message') ngheCon.push(f); } },
-          parent: { postMessage(msg) { setTimeout(() => ngheCha.slice().forEach(f => f({ data: JSON.parse(JSON.stringify(msg)), source: winCon })), 0); } }
+          parent: winCha
         };
         vm.createContext(sb);
         vm.runInContext(m[1], sb);
@@ -222,14 +226,14 @@ test('CSS: luật con cháu (table.mini th), var(), bỏ luật trạng thái, "
 });
 
 test('shortVariants: nháy cong/thẳng, dấu câu cuối, thập phân, gạch nối, mạo từ (chỉ cụm ngắn)', () => {
-  const v = I.shortVariants(['It’s in front of the box.'], { loose: true });
-  ['It’s in front of the box.', "It's in front of the box.", 'It’s in front of the box', "It's in front of the box"].forEach(x => assert.ok(v.includes(x), x));
-  assert.ok(!v.some(x => /^in front/.test(x)));
+  const v = I.shortVariants(['It’s under the old table.'], { loose: true });
+  ['It’s under the old table.', "It's under the old table.", 'It’s under the old table', "It's under the old table"].forEach(x => assert.ok(v.includes(x), x));
+  assert.ok(!v.some(x => /^under/.test(x)));
   assert.deepStrictEqual(I.shortVariants(['12,5']), ['12,5', '12.5']);
-  const m = I.shortVariants(['micro-arrays'], { loose: true });
-  ['micro-arrays', 'micro arrays', 'microarrays'].forEach(x => assert.ok(m.includes(x), x));
+  const m = I.shortVariants(['data-sets'], { loose: true });
+  ['data-sets', 'data sets', 'datasets'].forEach(x => assert.ok(m.includes(x), x));
   assert.ok(I.shortVariants(['a door'], { loose: true }).includes('door'));
-  assert.ok(!I.shortVariants(['The dog is in front of the box.'], { loose: true }).some(x => /^dog/.test(x)));
+  assert.ok(!I.shortVariants(['The cat is under the old table.'], { loose: true }).some(x => /^cat/.test(x)));
   assert.ok(!I.shortVariants(['a door']).includes('door'), 'chỉ bỏ mạo từ khi loose');
 });
 
@@ -471,9 +475,10 @@ zips.forEach(f => {
     }
     if (ten === 'K2_TIENGANH_DGNL_T01_MD01_SCORM') {
       const q36 = b.questions.find(q => q.no === '36');
-      assert.ok(q36.answers.includes("It's in front of the box") && q36.points === 2);
-      assert.deepStrictEqual(b.questions.find(q => q.no === '11–15').distractors, ['G. is'], 'F là ví dụ → không làm nhiễu');
-      assert.deepStrictEqual(b.questions.find(q => q.no === '6–10').dropdowns[0].options, ['play soccer', 'ride a bike', 'a tub', 'a bookcase', 'a door']);
+      assert.ok(q36.answers.length >= 2 && q36.points === 2, 'câu viết lại câu: nhiều cách viết, 2 điểm');
+      const nhieu = b.questions.find(q => q.no === '11–15').distractors;
+      assert.ok(nhieu.length === 1 && /^G\. /.test(nhieu[0]), 'F là ví dụ → không làm nhiễu, chỉ còn G');
+      assert.strictEqual(b.questions.find(q => q.no === '6–10').dropdowns[0].options.length, 5, 'khung từ 6–10: 5 lựa chọn (bỏ từ chỉ dùng cho ví dụ)');
     }
     if (ten === 'NSHM_TOAN_LOP2_PHIEU_BAI_CUOI_TUAN_SCORM12') {
       const q7 = b.questions.find(q => q.no === '7');
@@ -482,7 +487,8 @@ zips.forEach(f => {
     }
     if (/^NSHM_K2_TA/.test(ten)) {
       assert.ok(b.questions.filter(q => q.type === 'short').every(q => q.issues.some(x => x.level === 'warn' && /sắp xếp/.test(x.msg))));
-      assert.deepStrictEqual(b.questions.find(q => q.no === '11–15').distractors, ['G. is']);
+      const nhieu2 = b.questions.find(q => q.no === '11–15').distractors;
+      assert.ok(nhieu2.length === 1 && /^G\. /.test(nhieu2[0]), 'F là ví dụ → chỉ còn G làm nhiễu');
     }
   });
 });

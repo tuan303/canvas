@@ -161,7 +161,9 @@
 
     var stem = String(q.stem == null ? '' : q.stem);
     var stim = String(q.stimulus == null ? '' : q.stimulus);
-    if (rong(stem) && q.type !== 'text' && !(q.type === 'tf' && Array.isArray(q.statements) && q.statements.length)) {
+    // Câu điền bài đọc / ngữ âm: cả đề nằm trong đoạn dẫn (stem trống) là hợp lệ khi đoạn dẫn được chèn vào câu;
+    // trường hợp xuất với stimulus:'none' do qti.js cảnh báo riêng
+    if (rong(stem) && rong(stim) && q.type !== 'text' && !(q.type === 'tf' && Array.isArray(q.statements) && q.statements.length)) {
       warn('nội dung câu hỏi đang trống');
     }
     if (rong(stem) && rong(stim) && q.type === 'text') warn('nội dung đang trống');

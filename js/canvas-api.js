@@ -1,6 +1,8 @@
 /* js/canvas-api.js — gọi Canvas qua máy chủ trung gian /api/canvas (Canvas không mở CORS):
  * cấu hình, đăng nhập/đăng xuất, khoá học, ngân hàng câu hỏi, kiểm tra quyền, import gói QTI
- * (content_migration qti_converter → tải gói lên → theo dõi tiến trình → lấy vấn đề). */
+ * (content_migration qti_converter → tải gói lên → theo dõi tiến trình → lấy vấn đề).
+ * Hai đích: Question Bank – Classic (gói objectbank, overwrite_quizzes) hoặc chuyển sang New Quizzes khi nhập
+ * (importQuizzesNext → settings.import_quizzes_next = true, gói bố cục Item Bank có bài kiểm tra). */
 (function (root, factory) {
   var api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -73,11 +75,15 @@
     return s;
   }
 
-  // inst-fs (Canvas do Instructure lưu trữ) mở CORS cho mọi nguồn → trình duyệt tải thẳng được
+  // inst-fs (Canvas do Instructure lưu trữ) mở CORS cho mọi nguồn → trình duyệt tải thẳng được.
+  // Chỉ https cổng mặc định (gói đề không bao giờ đi qua http), không user:pass; địa chỉ khác → qua máy chủ
+  // trung gian (op=upload), nơi kiểm lại danh sách máy nhận file.
   function isInstFs(u) {
     try {
-      var h = new URL(String(u)).hostname.toLowerCase();
-      return /(^|\.)inscloudgate\.net$/.test(h) || /^inst-fs[.-][a-z0-9.-]*\.instructure\.com$/.test(h);
+      var x = new URL(String(u));
+      if (x.protocol !== 'https:' || (x.port && x.port !== '443') || x.username || x.password) return false;
+      var h = x.hostname.toLowerCase();
+      return /^[a-z0-9-]+(\.[a-z0-9-]+)*\.inscloudgate\.net$/.test(h) || /^inst-fs[.-][a-z0-9.-]*\.instructure\.com$/.test(h);
     } catch (e) { return false; }
   }
 
@@ -108,6 +114,33 @@
 
   function laSoId(x) { return /^\d{1,20}$/.test(String(x)); }
 
+  // Tên các tệp trong gói .zip (đọc thư mục trung tâm, không giải nén); không phải zip → null
+  function tenTrongZip(u8) {
+    if (!(u8 instanceof Uint8Array) || u8.length < 22) return null;
+    var u16 = function (o) { return u8[o] | (u8[o + 1] << 8); };
+    var u32 = function (o) { return (u16(o) | (u16(o + 2) << 16)) >>> 0; };
+    var e = -1;
+    for (var i = u8.length - 22; i >= 0 && i >= u8.length - 22 - 65535; i--) {
+      if (u8[i] === 0x50 && u8[i + 1] === 0x4B && u8[i + 2] === 5 && u8[i + 3] === 6) { e = i; break; }
+    }
+    if (e < 0) return null;
+    var n = u16(e + 10), o = u32(e + 16), ten = [];
+    for (var k = 0; k < n; k++) {
+      if (o + 46 > u8.length || u32(o) !== 0x02014B50) return null;
+      var dt = u16(o + 28), dx = u16(o + 30), dc = u16(o + 32), s = '';
+      for (var j = 0; j < dt && o + 46 + j < u8.length; j++) s += String.fromCharCode(u8[o + 46 + j]);
+      ten.push(s);
+      o += 46 + dt + dx + dc;
+    }
+    return ten;
+  }
+  // Gói có bài kiểm tra (bố cục "itembank": <id>/assessment_meta.xml + <assessment>) — cần cho chuyển sang New Quizzes,
+  // vì Canvas chỉ chuyển các BÀI KIỂM TRA vừa nhập; gói chỉ có ngân hàng (objectbank) không tạo ra New Quiz nào.
+  function hasAssessment(u8) {
+    var ds = tenTrongZip(u8);
+    return !!ds && ds.some(function (p) { return /(^|\/)assessment_meta\.xml$/i.test(p); });
+  }
+
   /* ===================== Phiên bản có cấu hình ===================== */
 
   function create(opts) {
@@ -120,6 +153,14 @@
     var kho = opts.storage !== undefined ? opts.storage : khoMacDinh();
     var boNho = { token: '' };
     var hangDoi = {};   // mỗi khoá học chỉ một lần import tại một thời điểm
+    // Mọi yêu cầu tới máy chủ trung gian chạy LẦN LƯỢT: hai yêu cầu song song lúc token sắp hết hạn sẽ cùng làm mới,
+    // Canvas thay access_token ở lần sau → cookie của lần trước chứa token đã chết (và đăng xuất có thể trượt).
+    var hangGoi = Promise.resolve();
+    function noiTiep(fn) {
+      var lan = hangGoi.then(fn, fn);
+      hangGoi = lan.then(function () { }, function () { });
+      return lan;
+    }
 
     function khoMacDinh() {
       try { var s = root && root.sessionStorage; if (s) { s.getItem(KHOA_TOKEN); return s; } } catch (e) { /* bị chặn */ }
@@ -160,8 +201,9 @@
       return Math.min(20000, 1000 * Math.pow(2, lan)) + Math.floor(Math.random() * 250);
     }
 
-    // Gửi một yêu cầu tới máy chủ trung gian; tự chờ lùi khi Canvas trả 403/429 giới hạn tốc độ
-    async function goi(url, init, kiemHuy) {
+    // Gửi một yêu cầu tới máy chủ trung gian (xếp hàng); tự chờ lùi khi Canvas trả 403/429 giới hạn tốc độ
+    function goi(url, init, kiemHuy) { return noiTiep(function () { return goiNgay(url, init, kiemHuy); }); }
+    async function goiNgay(url, init, kiemHuy) {
       for (var lan = 0; ; lan++) {
         if (kiemHuy) kiemHuy();
         var r;
@@ -215,8 +257,11 @@
       var coToken = hasPersonalToken();
       clearPersonalToken();     // token cá nhân chỉ xoá khỏi trình duyệt, không thu hồi trên Canvas
       try {
-        var r = await goiFetch(urlOp('logout'), { method: 'POST', headers: { 'X-NH-Client': '1', 'Accept': 'application/json' }, credentials: 'same-origin' });
-        await r.text();
+        // xếp sau các yêu cầu đang chạy: nếu một yêu cầu vừa làm mới token, đăng xuất thu hồi đúng token mới
+        var r = await noiTiep(function () {
+          return goiFetch(urlOp('logout'), { method: 'POST', headers: { 'X-NH-Client': '1', 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (x) { return x.text().then(function () { return x; }); });
+        });
         return { ok: r.ok, personalTokenCleared: coToken };
       } catch (e) { return { ok: false, personalTokenCleared: coToken }; }
     }
@@ -323,13 +368,25 @@
         try { onProgress(e); } catch (x) { /* lỗi giao diện không làm hỏng import */ }
       };
       var goc = '/api/v1/courses/' + courseId + '/content_migrations';
+      // Chuyển sang New Quizzes khi nhập (= ô "Chuyển đổi nội dung thành Các Câu Hỏi Kiểm Tra Mới" của trang nhập):
+      // Canvas nhập như Classic rồi chuyển từng BÀI KIỂM TRA vừa nhập thành New Quiz (khoá học phải bật New Quizzes).
+      var nq = o.importQuizzesNext === true;
+      if (nq && !hasAssessment(bytes)) {
+        throw CanvasError('Gói này chỉ có ngân hàng câu hỏi, không có bài kiểm tra — chuyển sang New Quizzes cần gói kiểu Item Bank (mỗi ngân hàng một bài kiểm tra).', 0, { code: 'goi_sai' });
+      }
 
-      // 1) tạo migration (JSON, overwrite_quizzes là boolean thật — chuỗi "false" bị Ruby coi là true)
+      // 1) tạo migration (JSON; overwrite_quizzes / import_quizzes_next là boolean thật — chuỗi "false" bị Ruby coi là true)
       bao('create', 2, 'Đang tạo yêu cầu nhập trên Canvas…');
       var settings = {};
-      if (o.bankName) settings.question_bank_name = String(o.bankName);
-      if (o.bankId != null && laSoId(o.bankId)) settings.question_bank_id = String(o.bankId);
-      if (o.overwrite !== false) settings.overwrite_quizzes = true;
+      if (nq) {
+        // giao diện Canvas khoá ô "Ngân hàng câu hỏi mặc định" khi chọn New Quizzes ("không tương thích") → không gửi
+        settings.import_quizzes_next = true;
+      } else {
+        if (o.bankName) settings.question_bank_name = String(o.bankName);
+        if (o.bankId != null && laSoId(o.bankId)) settings.question_bank_id = String(o.bankId);
+      }
+      // Classic: mặc định ghi đè (nhập lại cập nhật đúng câu cũ). New Quizzes: chỉ khi gọi xin rõ (mỗi lần gửi = một New Quiz mới)
+      if (nq ? o.overwrite === true : o.overwrite !== false) settings.overwrite_quizzes = true;
       var m = (await proxy('POST', goc, {
         migration_type: 'qti_converter',
         pre_attachment: { name: fileName, size: bytes.length, content_type: ctype },
@@ -347,7 +404,7 @@
 
       // 2) tải gói lên
       bao('upload', 5, 'Đang tải gói lên Canvas…', { migrationId: mid });
-      await taiGoiLen(pa, bytes, fileName, ctype, duongMig, kiemHuy);
+      await taiGoiLen(pa, bytes, fileName, ctype, { course: String(courseId), migration: mid, path: duongMig }, kiemHuy);
       bao('upload', 15, 'Đã tải gói lên — chờ Canvas xử lý…', { migrationId: mid });
 
       // 3) theo dõi: migration là nguồn sự thật; progress (nếu đọc được) cho % hoàn thành
@@ -367,7 +424,7 @@
         var pct = pr && pr.completion != null ? Number(pr.completion) : null;
         if (giaiDoan === 'pre_processing') bao('pre_processing', 15, 'Canvas đang nhận gói…', { migrationId: mid });
         else if (giaiDoan === 'queued') bao('queued', 15, 'Đang xếp hàng — khoá học đang có một lần nhập khác, Canvas sẽ tự chạy tiếp…', { migrationId: mid });
-        else if (giaiDoan === 'running') bao('running', 20 + (pct != null ? pct * 0.75 : 0), 'Canvas đang nhập câu hỏi…' + (pct != null ? ' (' + Math.round(pct) + '%)' : ''), { migrationId: mid, completion: pct });
+        else if (giaiDoan === 'running') bao('running', 20 + (pct != null ? pct * 0.75 : 0), (nq ? 'Canvas đang nhập và chuyển sang New Quizzes…' : 'Canvas đang nhập câu hỏi…') + (pct != null ? ' (' + Math.round(pct) + '%)' : ''), { migrationId: mid, completion: pct });
         if (giaiDoan === 'completed' || giaiDoan === 'failed') break;
         if (giaiDoan === 'pre_processing' && bayGio() - batDau > CHO_NHAN_GOI) {
           throw CanvasError('Canvas chưa nhận được gói sau 3 phút — lần tải lên có thể đã lỗi. Hãy thử lại hoặc tải gói và import tay.', 0, { code: 'qua_gio', migrationId: mid });
@@ -388,7 +445,7 @@
       var nLoi = issues.filter(function (i) { return i.type === 'error'; }).length;
       bao(giaiDoan, 100, ok ? 'Đã nhập xong vào Canvas' + (issues.length ? ' — ' + issues.length + ' vấn đề cần xem.' : '.')
         : 'Canvas báo nhập thất bại' + (nLoi ? ' (' + nLoi + ' lỗi).' : '.'), { migrationId: mid });
-      return { ok: ok, state: giaiDoan, migrationId: mid, migration: m, progress: tt, issues: issues };
+      return { ok: ok, state: giaiDoan, migrationId: mid, migration: m, progress: tt, issues: issues, importQuizzesNext: nq };
     }
 
     function taoForm(pa, bytes, fileName, ctype) {
@@ -419,7 +476,8 @@
       return { body: out, contentType: 'multipart/form-data; boundary=' + ranh };
     }
 
-    async function taiQuaMayChu(pa, bytes, fileName, ctype, kiemHuy) {
+    // ids = {course, migration}: máy chủ kiểm lần nhập này có thật, của người dùng và đang chờ gói rồi mới chuyển tiếp
+    async function taiQuaMayChu(pa, bytes, fileName, ctype, ids, kiemHuy) {
       if (bytes.length > TAI_QUA_MAY_CHU) {
         throw CanvasError('Gói lớn hơn 4 MB và Canvas của trường không dùng inst-fs nên không gửi qua máy chủ trung gian được — hãy tải gói về rồi import tay.', 413, { code: 'qua_lon' });
       }
@@ -427,24 +485,25 @@
       var h = { 'X-NH-Client': '1', 'Accept': 'application/json', 'Content-Type': 'application/octet-stream', 'X-Upload-Content-Type': mp.contentType };
       var t = docToken();
       if (t) h['X-Canvas-Token'] = t;
-      var r = await goi(urlOp('upload', '&url=' + encodeURIComponent(pa.upload_url)),
+      var r = await goi(urlOp('upload', '&course=' + encodeURIComponent(ids.course) + '&migration=' + encodeURIComponent(ids.migration) +
+        '&url=' + encodeURIComponent(pa.upload_url)),
         { method: 'POST', headers: h, body: mp.body, credentials: 'same-origin' }, kiemHuy);
       return r.data;
     }
 
-    async function taiGoiLen(pa, bytes, fileName, ctype, duongMig, kiemHuy) {
-      if (!laTaiThang(pa.upload_url)) return taiQuaMayChu(pa, bytes, fileName, ctype, kiemHuy);
+    async function taiGoiLen(pa, bytes, fileName, ctype, ids, kiemHuy) {
+      if (!laTaiThang(pa.upload_url)) return taiQuaMayChu(pa, bytes, fileName, ctype, ids, kiemHuy);
       kiemHuy();
       var r;
       try {
-        // POST thẳng tới inst-fs: không gửi cookie/token, không tiêu đề tự đặt (tránh preflight)
-        r = await goiFetch(pa.upload_url, { method: 'POST', body: taoForm(pa, bytes, fileName, ctype), credentials: 'omit', redirect: 'follow' });
+        // POST thẳng tới inst-fs: không gửi cookie/token, không tiêu đề tự đặt (tránh preflight), không Referer
+        r = await goiFetch(pa.upload_url, { method: 'POST', body: taoForm(pa, bytes, fileName, ctype), credentials: 'omit', redirect: 'follow', referrerPolicy: 'no-referrer' });
       } catch (e) {
         // Có thể inst-fs đã nhận nhưng trình duyệt không đọc được phản hồi → hỏi Canvas trước khi thử đường khác
         await ngu(1500);
-        var m = (await proxy('GET', duongMig, undefined, kiemHuy)).data || {};
+        var m = (await proxy('GET', ids.path, undefined, kiemHuy)).data || {};
         if (mapState(m.workflow_state) !== 'pre_processing') return { ok: true, via: 'direct-opaque' };
-        return taiQuaMayChu(pa, bytes, fileName, ctype, kiemHuy);
+        return taiQuaMayChu(pa, bytes, fileName, ctype, ids, kiemHuy);
       }
       var txt = '';
       try { txt = await r.text(); } catch (e) { txt = ''; }
@@ -464,6 +523,7 @@
   var macDinh = create();
   var api = {
     create: create, parseLink: parseLink, toApiPath: toApiPath, isInstFs: isInstFs, mapState: mapState,
+    zipEntryNames: tenTrongZip, hasAssessment: hasAssessment,
     CanvasError: CanvasError, UPLOAD_PROXY_MAX: TAI_QUA_MAY_CHU
   };
   for (var k in macDinh) api[k] = macDinh[k];

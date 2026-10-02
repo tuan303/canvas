@@ -400,7 +400,7 @@ test('blanks: response_<id>, nhãn ô không texttype, mọi cách viết là nh
   assert.ok(rc.every(x => x.attrs.continue === undefined && core.xmlText(core.find(x, 'setvar')) === '50.00' && core.find(x, 'setvar').attrs.action === 'Add'));
   const stem = stemCua(it);
   assert.strictEqual(stem.split('[b1]').length - 1, 1, '[b1] chỉ còn 1 lần (trong câu)');
-  assert.ok(stem.includes('[​b1]'));
+  assert.ok(stem.includes('[\u200Bb1]'));
   assert.ok(r.issues.some(x => x.qid === 'q08' && x.level === 'info' && /vô hiệu hoá/.test(x.msg)));
 });
 
@@ -801,6 +801,24 @@ test('module thật html.js / math.js (nếu đã có) → vẫn ra XML hợp l�
       assert.ok(r.packages[0].counts.total >= 12);
     }
   } finally { depGia(); }
+});
+
+test('đề chỉ nằm trong đoạn dẫn: "each" không cảnh báo, "none" cảnh báo câu không có phần đề (vẫn xuất)', () => {
+  const t = 'Điền bài đọc';
+  const bank = { title: t, ident: core.bankIdent(t), source: { kind: 'docx', name: 'x.docx' }, images: {}, warnings: [], questions: [
+    cau({ id: 'q01', no: '26', title: 'Câu 26', type: 'mc', points: 1, stem: '', stimulus: '<p>My pet (26) ____ Milo.</p>',
+      choices: [{ id: 'A', html: 'is', correct: true }, { id: 'B', html: 'are', correct: false }] }),
+    cau({ id: 'q02', no: '27', title: 'Câu 27', type: 'mc', points: 1, stem: '<p>Có đề riêng</p>', stimulus: '<p>Đoạn</p>',
+      choices: [{ id: 'A', html: 'x', correct: true }, { id: 'B', html: 'y', correct: false }] })
+  ] };
+  const coCanh = r => r.issues.filter(i => i.level === 'warn' && /chỉ nằm trong đoạn dẫn/.test(i.msg));
+  assert.deepStrictEqual(coCanh(qti.prepare([bank], { stimulus: 'each' })), []);
+  const r = qti.prepare([bank], { stimulus: 'none' });
+  const c = coCanh(r);
+  assert.strictEqual(c.length, 1);
+  assert.strictEqual(c[0].qid, 'q01');
+  assert.match(c[0].msg, /^Câu 26: /);
+  assert.strictEqual(r.packages[0].counts.total, 2, 'cảnh báo, không bỏ câu');
 });
 
 /* ---------------- chạy ---------------- */

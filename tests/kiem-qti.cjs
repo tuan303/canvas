@@ -305,6 +305,25 @@
   // Thẻ HTML thật trong ô text thuần = lỗi của bộ sinh. "a<b", "x < y" là chữ hợp lệ: Canvas hiện ô text thuần bằng
   // CGI.escapeHTML (quiz_question_builder.rb#L170-L175) và so đáp án ngắn sau escapeHTML hai phía (short_answer_question.rb#L36-L47)
   var RE_CO_THE = /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s*\/?>|\s+[A-Za-z_:][-A-Za-z0-9_:.]*\s*=)|<!--/;
+  // Mảnh text/html "chỉ có chữ" (bỏ <br>/khoảng trắng hai đầu rồi bóc lớp <p>/<div>/<span> không thuộc tính, lặp lại) mà
+  // chữ có & < > hoặc dấu cách cứng: Canvas detect_html (html_helper.rb#L114-L132, remove_extraneous_nodes) coi là chữ
+  // thuần nhưng lưu chuỗi HTML đã escape ("2 &lt; 3") vào trường chữ (text / left / neutral_comments); trang làm bài in
+  // trường chữ qua ERB escape → học sinh thấy nguyên "&lt;". (Tìm ra bằng bộ mô phỏng Canvas, tests/sim-chay.cjs.)
+  var DAU_CACH_CUNG = String.fromCharCode(160);
+  function chuBiThoat(m) {
+    if (!laHtml(m)) return false;
+    var BIEN = /^(?:\s|<br\s*\/?>)+|(?:\s|<br\s*\/?>)+$/gi;
+    var s = String(m.text == null ? '' : m.text).replace(BIEN, ''), mm;
+    while ((mm = /^<(p|div|span)>([\s\S]*)<\/\1>$/i.exec(s))) s = mm[2].replace(BIEN, '');
+    if (!s || RE_CO_THE.test(s)) return false;
+    var t = giaiTTHtml(s);
+    return /[&<>]/.test(t) || t.indexOf(DAU_CACH_CUNG) >= 0;
+  }
+  function kiemChuBiThoat(mts, W, ten) {
+    var m = (mts || []).filter(chuBiThoat)[0];
+    if (m) W('html-escaped-text', ten + ' "' + rutGon(m.text) + '" là text/html nhưng chỉ có chữ chứa & < > hoặc dấu cách cứng → ' +
+      'Canvas lưu chuỗi đã thoát vào trường chữ, học sinh thấy nguyên "&lt;"/"&amp;" — dùng texttype="text/plain" với chữ đã giải thực thể');
+  }
 
   /* ===================== kiểm tra XML nghiêm ngặt ===================== */
   // lxml chạy với recover=True (Q:imsqtiv1.py#L6302): XML hỏng bị "sửa" im lặng → mất nội dung. Mọi lỗi cú pháp = lỗi.
@@ -1176,6 +1195,7 @@
       if (!f.ident) { E('feedback-id', '<itemfeedback> thiếu ident'); return; }
       if (fbIds[f.ident]) W('feedback-dup', 'itemfeedback "' + f.ident + '" lặp');
       fbIds[f.ident] = true;
+      kiemChuBiThoat(f.mattexts, W, 'Phản hồi ' + f.ident);
       var id = f.ident, py = pyIdent(id, 'FEEDBACK_');
       if (id === 'general_fb' || id === 'correct_fb' || id === 'general_incorrect_fb') return;
       var mm = /^(\d+)_fb$/.exec(id);
@@ -1253,6 +1273,7 @@
     r.labels.forEach(function (l) {
       if (!l.raw.trim() && !/<img/i.test(l.raw)) W('choice-empty', 'Phương án ' + l.identRaw + ' rỗng → Canvas ghi "No answer text provided."');
       l.mattexts.forEach(function (m) { if (m.texttype === 'text/plain' && RE_CO_THE.test(m.text)) E('plain-has-markup', 'Phương án ' + l.identRaw + ' là text/plain nhưng chứa thẻ HTML → hiện nguyên chữ thẻ (dùng text/html, R§2.0)'); });
+      kiemChuBiThoat(l.mattexts, W, 'Phương án ' + l.identRaw);
       if (!l.mattexts.length && l.raw) W('label-pcdata', 'Phương án ' + l.identRaw + ' viết chữ trực tiếp trong response_label (không qua material/mattext)');
     });
 
@@ -1604,6 +1625,7 @@
     var chuKy = function (r) { return r.labels.map(function (l) { return l.identRaw + '\u0001' + l.raw; }).join('\u0002'); };
     rs.forEach(function (r, i) {
       if (i > 0 && chuKy(r) !== chuKy(dau0)) E('match-right-list', 'response "' + r.identRaw + '" có danh sách vế phải khác response đầu — Canvas chỉ đọc danh sách ở lid đầu tiên (R§2.7)');
+      kiemChuBiThoat(r.prompt, W, 'Vế trái ' + r.identRaw);
       if (!r.prompt.length || !r.prompt.map(function (m) { return m.text; }).join('').trim()) E('match-left-missing', 'response "' + r.identRaw + '" thiếu vế trái (material trước render_choice)');
       if (r.card !== 'single') W('blank-rcardinality', 'response_lid "' + r.identRaw + '" nên là rcardinality="Single"');
     });

@@ -54,6 +54,8 @@
           <li><a href="#word-loai">Ví dụ từng loại câu</a></li>
           <li><a href="#cong-thuc">Công thức</a></li>
           <li><a href="#anh">Ảnh và bảng</a></li>
+          <li><a href="#de-thuong">Đề Word thông thường</a></li>
+          <li><a href="#file-dap-an">File đáp án riêng (HDC, KEY)</a></li>
         </ol>
       </li>
       <li><a href="#excel">3. Soạn đề bằng Excel</a></li>
@@ -85,6 +87,7 @@
           <tbody>
             <tr><td><b>Word (.docx)</b></td><td>Đề đã có sẵn dạng giấy; cần công thức, hình, bảng; giữ cách trình bày quen thuộc.</td><td><a href="mau/Mau-ngan-hang-cau-hoi.docx" download>Tải mẫu Word</a> · <a href="#word">Hướng dẫn</a></td></tr>
             <tr><td><b>Excel (.xlsx)</b></td><td>Ngân hàng nhiều câu ngắn, cần ghi mức độ / chủ đề cho từng câu, nhiều người cùng soạn.</td><td><a href="mau/Mau-ngan-hang-cau-hoi.xlsx" download>Tải mẫu Excel</a> · <a href="#excel">Hướng dẫn</a></td></tr>
+            <tr><td><b>Đề Word có sẵn</b> + file đáp án</td><td>Đề đánh số câu thông thường, đáp án / hướng dẫn chấm để ở file riêng (HDC, KEY).</td><td><a href="#de-thuong">Đề thông thường</a> · <a href="#file-dap-an">File đáp án</a></td></tr>
             <tr><td><b>Gói SCORM (.zip)</b></td><td>Đề đã số hoá bằng bộ tạo đề SCORM của trường — đưa thẳng vào ngân hàng.</td><td><a href="#scorm">Hướng dẫn</a></td></tr>
           </tbody>
         </table>
@@ -224,6 +227,29 @@
         <li>Nội dung nằm trong <b>Text Box, Shape, SmartArt, Chart</b> bị bỏ qua (có cảnh báo) — hãy chụp thành ảnh.</li>
         <li>Bảng Word được giữ nguyên (có viền). Không đặt <b>toàn bộ đề</b> trong một bảng lớn.</li>
       </ul>
+
+      <h3 id="de-thuong">Đề Word thông thường (không soạn theo mẫu)</h3>
+      <p>Đề đã có sẵn cũng nạp thẳng được, không cần chép sang mẫu. Công cụ nhận:</p>
+      <ul>
+        <li>Câu đánh số <code>1.</code> <code>12)</code> (không có chữ “Câu”), hoặc <code>Câu 1.</code> như mẫu. Câu ví dụ đánh số <code>0.</code> bị bỏ qua.</li>
+        <li>Lệnh chung cho một nhóm câu — “Questions 1-6”, “Từ câu 18 đến câu 22”, “1. Look and circle … (…/5 points)” — cùng bài đọc của nhóm được chèn làm <b>đoạn dẫn</b> cho các câu trong nhóm.</li>
+        <li>Tiêu đề mục “I. Vocabulary”, “B. GRAMMAR”, “READING PASSAGE 2”, “Part 2”; câu và phương án nằm trong <b>bảng</b>; phương án là hình.</li>
+        <li>Đáp án được <b>tô vàng</b> (kể cả chữ ngay sau số câu trong bài điền), đáp án trong ngoặc cuối dòng <code>[FALSE]</code> <code>[C]</code>, danh sách lựa chọn dùng chung A–G, TRUE / FALSE / NOT GIVEN.</li>
+        <li>Mẫu “upload câu hỏi”: <code>Câu 1 [OC-NB]:</code> … <code>ANSWER: A=30, B=-10</code>, ô <code>[[1]]</code>, câu chùm <code>[EM]</code>.</li>
+      </ul>
+      <p>Đề không có đáp án thì câu báo lỗi “chưa xác định đáp án đúng” — nạp kèm <a href="#file-dap-an">file đáp án</a>. Xem kỹ từng câu ở bước soát: đề tự do khó đoán hơn đề theo mẫu.</p>
+
+      <h3 id="file-dap-an">File đáp án riêng (HDC, KEY, Đáp án)</h3>
+      <p>Nhiều đề để đáp án / hướng dẫn chấm ở <b>một file Word riêng</b>. Hãy <b>thả cả hai file cùng lúc</b> (file đề và file đáp án):</p>
+      <ol class="steps-list">
+        <li>File đáp án hiện thành một dòng có nhãn <b>ĐA</b> và số đáp án đọc được (bảng “Câu – Đáp án”, dòng <code>Câu 1: A</code>, bảng THPT 2025 Phần I / II / III — Đúng/Sai từng ý, ô chữ số trả lời ngắn).</li>
+        <li>Công cụ tự ghép với file đề <b>cùng tên</b> sau khi bỏ chữ HDC / KEY / Đáp án (vd <code>26.12.HH.KS.HDC.0301</code> ↔ <code>26.12.HH.KS.0301</code>, <code>De_1_KEY</code> ↔ <code>De_1</code>), tên gần giống, hoặc file đề duy nhất nạp cùng lúc. Không ghép được thì chọn file đề ở ô <b>Điền đáp án vào file đề</b>.</li>
+        <li>Đáp án được điền vào các câu còn thiếu; dòng file ghi “khớp … câu — điền …, trùng …, khác đề …”. Câu trong đề <b>đã có</b> đáp án khác với file đáp án thì <b>giữ đáp án trong đề</b> và có cảnh báo ở bước soát — hãy kiểm tra câu đó.</li>
+        <li>Chọn nhầm file đề? Đổi ở ô chọn (hoặc chọn “Không điền”, hoặc bấm <b>Bỏ</b> ở file đáp án): file đề được đọc lại như cũ, điểm và câu bỏ chọn đã sửa vẫn giữ.</li>
+      </ol>
+      <div class="callout c-info"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span>
+        <div><p>File hướng dẫn chấm chỉ có lời giải tự luận (không có chữ cái A–D, Đ/S hay số) có thể bị đọc thành đề. Nếu tên file có HDC / KEY / Đáp án, bấm nút <b>Đây là file đáp án</b> ở dòng của file đó.</p></div>
+      </div>
     </section>
 
     <!-- ===================== 3. EXCEL ===================== -->
@@ -266,6 +292,13 @@
         <li><b>Dán ảnh nổi trên trang tính</b>, đặt góc trên-trái của ảnh vào dòng của câu. Ảnh nằm ở cột phương án → ảnh của phương án đó; ở cột Lời giải → ảnh lời giải; chỗ khác → ảnh của câu hỏi. Ảnh “Place in Cell” của Excel 365 cũng đọc được.</li>
         <li>Hoặc <b>ghi tên file ở cột Ảnh</b> rồi khi nạp, kéo thả <b>file Excel cùng các ảnh</b> (hoặc cả thư mục ảnh, hoặc một file .zip chứa ảnh). Nạp ảnh sau cũng được — công cụ tự đọc lại file Excel.</li>
       </ol>
+      <h3>Lưu ý khi gõ trong Excel</h3>
+      <ul>
+        <li><b>Phân số bị Excel đổi thành ngày:</b> gõ <code>1/2</code> hay <code>8/3</code> vào ô định dạng thường, Excel tự đổi thành ngày tháng — công cụ báo <b>lỗi</b> ở đúng ô. Gõ <code>'1/2</code> (dấu nháy đơn ở đầu) hoặc định dạng ô là <b>Text</b>. Trong file mẫu, các cột phương án A–H và Đáp án đã để sẵn định dạng Text.</li>
+        <li>Ô định dạng phần trăm / phân số hiện đúng như Excel hiển thị (<code>25%</code>, <code>1/2</code>).</li>
+        <li>Text Box, Equation, biểu đồ, hình vẽ đặt trên dòng câu hỏi và các dòng bị <b>ẩn / lọc</b> không được đọc — có cảnh báo ở đúng dòng.</li>
+        <li>Xoá các dòng ví dụ của mẫu bằng cách xoá cả dòng (ảnh ví dụ đi theo dòng); không gộp ô nội dung.</li>
+      </ul>
       <div class="callout c-warn"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
         <div><p>Trong Excel, <b>tô màu hay in đậm ô không được dùng để đánh dấu đáp án</b> — hãy ghi ở cột Đáp án (hoặc <code>*</code> trước phương án). Ô kiểu số như <code>0.25</code> hiện theo dấu chấm; muốn giữ “0,25” hãy định dạng ô là Text. Mỗi câu nằm trên <b>một dòng</b>.</p></div>
       </div>
@@ -310,7 +343,7 @@
             <tr><td>Nhập vào đâu</td><td>Item Bank – New Quizzes</td><td>Trường còn dùng Classic Quizzes, hoặc muốn nhập lại để cập nhật → Question Bank – Classic.</td></tr>
             <tr><td>Câu Đúng/Sai nhiều ý</td><td>Một câu, mỗi ý một ô chọn</td><td>Muốn trộn từng ý như câu riêng → tách mỗi ý thành một câu (điểm chia đều).</td></tr>
             <tr><td>Công thức</td><td>MathML</td><td>Canvas của trường không hiện công thức → Ảnh công thức của Canvas.</td></tr>
-            <tr><td>Đoạn dẫn</td><td>Chèn vào đầu từng câu</td><td>Đoạn dẫn quá dài (câu &gt; 15 000 ký tự) → Không chèn, rồi tự thêm đoạn dẫn vào bài kiểm tra.</td></tr>
+            <tr><td>Đoạn dẫn</td><td>Chèn vào đầu từng câu</td><td>Đoạn dẫn quá dài (câu &gt; 15 000 ký tự) → Không chèn, rồi tự thêm đoạn dẫn vào bài kiểm tra. Câu có đề nằm hẳn trong đoạn dẫn (câu điền bài đọc “(26) ____”) khi đó không còn phần đề — công cụ cảnh báo.</td></tr>
             <tr><td>Lời giải</td><td>Kèm theo</td><td>Không muốn học sinh thấy lời giải sau khi nộp → bỏ chọn (hoặc tắt trong cài đặt bài kiểm tra).</td></tr>
           </tbody>
         </table>
@@ -322,15 +355,22 @@
     <section id="nhap-canvas" aria-labelledby="h-nhap-canvas">
       <h2 id="h-nhap-canvas"><span class="step-no" aria-hidden="true">6</span>Nhập vào Canvas</h2>
 
+      <p class="cv-host">Canvas của trường: <a href="https://4015.instructure.com" target="_blank" rel="noopener noreferrer">4015.instructure.com</a> — trường dùng <b>New Quizzes</b>, nên đích mặc định là Item Bank.</p>
+
       <h3 id="nhap-item-bank">A. Item Bank – New Quizzes (khuyên dùng)</h3>
       <ol class="steps-list">
-        <li>Trong khoá học, mở <span class="ui">Ngân Hàng Câu Hỏi</span> <span class="en">(Item Banks)</span> ở thanh điều hướng bên trái. <b>Đừng</b> mở Item Banks từ bên trong một bài kiểm tra — ở đó không có nút nhập.</li>
-        <li>Bấm <span class="ui">+ Add Bank</span>, đặt tên (nên giống tên ngân hàng trong file), đánh dấu <span class="ui">Share</span> nếu muốn chia sẻ cho khoá học khác, rồi <span class="ui">Create Bank</span>.</li>
-        <li>Mở ngân hàng vừa tạo. <b>Ngân hàng phải còn trống</b> — ngân hàng đã có câu hỏi sẽ không có mục nhập.</li>
-        <li>Bấm nút <span class="ui">⋮</span> <span class="en">(Options)</span> → <span class="ui">Import Content</span>.</li>
-        <li>Kéo thả <b>file .zip của đúng ngân hàng này</b> (mỗi ngân hàng một file) → <span class="ui">Import</span>. Chờ thanh trạng thái chạy xong.</li>
+        <li>Trong khoá học, bấm <span class="ui">Ngân Hàng Câu Hỏi</span> <span class="en">(Item Banks)</span> ở thanh điều hướng bên trái của khoá học. <b>Đừng</b> mở Item Banks từ bên trong một bài kiểm tra — ở đó không có mục nhập.</li>
+        <li>Bấm <span class="ui">+ Add Bank</span>, đặt tên (nên giống tên ngân hàng ở bước soát), rồi <span class="ui">Create Bank</span>.</li>
+        <li>Mở ngân hàng <b>vừa tạo</b>. <b>Ngân hàng phải còn trống</b> — ngân hàng đã có câu hỏi sẽ không có mục nhập.</li>
+        <li>Bấm nút <span class="ui">⋮</span> <span class="en">(Options)</span> ở góc trên ngân hàng → <span class="ui">Import Content</span>.</li>
+        <li>Chọn (hoặc kéo thả) <b>file .zip của đúng ngân hàng này</b> — mỗi ngân hàng một file, để nguyên không giải nén — rồi bấm <span class="ui">Import</span>. Chờ thanh trạng thái chạy xong.</li>
         <li>Kiểm tra số câu, công thức, ảnh. Dùng trong bài kiểm tra: New Quiz → <span class="ui">Build</span> → biểu tượng Item Banks → thêm toàn bộ hoặc rút ngẫu nhiên N câu.</li>
       </ol>
+      <ul>
+        <li><b>Một file .zip = một ngân hàng.</b> Tải gói Item Bank cho 3 ngân hàng → 3 file, tạo 3 ngân hàng trống và nhập lần lượt.</li>
+        <li><b>Dùng chung giữa các khoá học:</b> trong ngân hàng bấm <span class="ui">⋮</span> → <span class="ui">Share</span> để chia sẻ cho đồng nghiệp hoặc khoá học khác; ngân hàng được chia sẻ hiện ở bộ lọc <span class="ui">Shared with Me</span> / <span class="ui">Shared with Courses</span>. Không cần nhập lại ở từng khoá.</li>
+        <li><b>Tên gọi dễ nhầm:</b> tiếng Việt của Canvas gọi cả Item Bank lẫn ngân hàng Classic là “Ngân Hàng Câu Hỏi”; ngân hàng Classic có thêm “(Bản cũ)”, một vài chỗ gọi Item Bank là “Ngân Hàng Mục”.</li>
+      </ul>
 
       <h3 id="nhap-new-quiz">B. Nhập thẳng vào một New Quiz</h3>
       <ol class="steps-list">
@@ -364,14 +404,24 @@
     <!-- ===================== 7. GỬI THẲNG ===================== -->
     <section id="gui-thang" aria-labelledby="h-gui-thang">
       <h2 id="h-gui-thang"><span class="step-no" aria-hidden="true">7</span>Gửi thẳng lên Canvas</h2>
-      <p>Bước 4 “Gửi thẳng lên Canvas” chỉ hiện khi bộ phận CNTT của trường đã bật kết nối Canvas cho công cụ (mở file trên máy bằng <code>file://</code> sẽ không có bước này).</p>
+      <p>Bước 4 “Gửi thẳng lên Canvas” chỉ hiện khi bộ phận CNTT của trường đã bật kết nối Canvas cho công cụ (mở file trên máy bằng <code>file://</code> sẽ không có bước này). Bước 4 ghi rõ “Canvas của trường: 4015.instructure.com”.</p>
       <ol class="steps-list">
         <li>Bấm <b>Đăng nhập Canvas</b> và cho phép ứng dụng. Cửa sổ đăng nhập tự đóng, câu hỏi đã nạp vẫn còn.</li>
-        <li>Chọn <b>khoá học</b> (chỉ hiện khoá học thầy cô là giáo viên / thiết kế / trợ giảng). Công cụ kiểm tra quyền nhập và liệt kê các ngân hàng đang có.</li>
-        <li>Chọn <b>ngân hàng gửi đi</b>, kiểm tra tên, giữ ô <b>Ghi đè</b> nếu đã gửi trước đó, rồi bấm <b>Gửi lên Canvas</b>. Thanh tiến trình chạy tới khi Canvas nhập xong và hiện các vấn đề (nếu có).</li>
+        <li>Chọn <b>khoá học</b> (chỉ hiện khoá học thầy cô là giáo viên / thiết kế / trợ giảng). Công cụ kiểm tra quyền nhập và liệt kê các ngân hàng Classic đang có.</li>
+        <li>Chọn <b>ngân hàng gửi đi</b>, kiểm tra tên, rồi chọn <b>Đưa vào đâu?</b> (bảng dưới).</li>
+        <li>Bấm nút gửi. Thanh tiến trình chạy tới khi Canvas nhập xong; kết quả có liên kết mở trang <span class="ui">Câu Hỏi Kiểm Tra</span> (New Quizzes) hoặc <span class="ui">Quản Lý Ngân Hàng Câu Hỏi</span> (Classic) và trang <span class="ui">Nhập Nội Dung Khóa Học</span> để xem các vấn đề của lần nhập.</li>
       </ol>
+      <div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th scope="col">Đưa vào đâu?</th><th scope="col">Canvas làm gì</th><th scope="col">Gửi lại sau khi sửa đề</th></tr></thead>
+          <tbody>
+            <tr><td><b>Question Bank – Classic</b></td><td>Tạo / cập nhật một <b>Ngân Hàng Câu Hỏi (Bản cũ)</b> tên = tên ngân hàng. Dùng cho bài kiểm tra Classic.</td><td>Giữ ô <b>Ghi đè</b> → cập nhật đúng câu cũ.</td></tr>
+            <tr><td><b>Chuyển sang New Quizzes khi nhập</b></td><td>Như đánh dấu ô <span class="ui">Chuyển đổi nội dung thành Các Câu Hỏi Kiểm Tra Mới</span> khi nhập tay: Canvas tạo <b>một New Quiz</b> chứa mọi câu, tên bài = tên ngân hàng (có thể cần vài phút mới hiện trong <span class="ui">Câu Hỏi Kiểm Tra</span>). Nếu Canvas của trường bật chuyển ngân hàng sang New Quizzes, có thể có thêm <b>Item Bank</b> cùng tên — <span class="tag-thu">cần thử lần đầu</span>.</td><td>Mỗi lần gửi tạo <b>một New Quiz mới</b>; xoá bài cũ nếu không dùng.</td></tr>
+          </tbody>
+        </table>
+      </div>
       <div class="callout c-warn"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
-        <div><p>Gửi thẳng chỉ đưa được vào <b>Question Bank (Classic)</b>. <b>Item Bank của New Quizzes không có API</b> — với Item Bank, dùng nút Tải gói QTI rồi nhập tay theo mục <a href="#nhap-item-bank">6A</a>.</p>
+        <div><p><b>Item Bank của New Quizzes không có API</b> — muốn chắc chắn có Item Bank, dùng nút Tải gói QTI rồi nhập tay theo mục <a href="#nhap-item-bank">6A</a>. Khoá học chưa bật New Quizzes thì “Chuyển sang New Quizzes” vẫn ra bài kiểm tra Classic.</p>
         <p>Chế độ “token truy cập cá nhân” chỉ để chạy thử: token chỉ nằm trong tab trình duyệt và tự xoá khi đóng tab; không dùng trên máy dùng chung.</p></div>
       </div>
     </section>
@@ -381,6 +431,10 @@
       <h2 id="h-hoi-dap"><span class="step-no" aria-hidden="true">8</span>Hỏi đáp &amp; xử lý sự cố</h2>
       <details><summary>Câu báo lỗi “chưa xác định đáp án đúng”</summary><div class="faq-a">
         <p>Câu chưa có dòng <code>Đáp án:</code> và không có phương án nào được gạch chân / tô đỏ / tô nền / đánh dấu <code>*</code>, hoặc bảng đáp án không có số câu này. Với câu Đúng/Sai: ghi <code>Đáp án: ĐSĐS</code>. Nếu phần chữ “Đáp án” nằm cùng dòng với phương án cuối, hãy xuống dòng.</p></div></details>
+      <details><summary>Đề chưa có đáp án, đáp án nằm ở file riêng (HDC / KEY)</summary><div class="faq-a">
+        <p>Thả <b>cả file đề và file đáp án</b> vào bước 1. File đáp án tự điền vào file đề cùng tên; nếu không tự ghép được, chọn file đề ở ô “Điền đáp án vào file đề” trên dòng của file đáp án. Xem <a href="#file-dap-an">File đáp án riêng</a>.</p></div></details>
+      <details><summary>Gửi “Chuyển sang New Quizzes” xong nhưng không thấy Item Bank</summary><div class="faq-a">
+        <p>Bình thường: cách gửi này chắc chắn tạo <b>New Quiz</b> (trong Câu Hỏi Kiểm Tra); Item Bank chỉ có khi Canvas của trường bật chuyển ngân hàng sang New Quizzes. Muốn có Item Bank, tải gói Item Bank ở bước 3 rồi nhập tay theo mục <a href="#nhap-item-bank">6A</a>. Canvas có thể để lại một ngân hàng “(Bản cũ)” cùng tên — không ảnh hưởng New Quiz.</p></div></details>
       <details><summary>Báo lỗi công thức MathType / ảnh WMF</summary><div class="faq-a">
         <p>Công thức MathType (Equation 3.0) là đối tượng nhúng trình duyệt không đọc được. Trong Word: thẻ <b>MathType → Convert Equations</b> → chuyển sang Office Math (công thức Word), lưu file rồi nạp lại. Hình vẽ cũ dạng WMF/EMF: chụp lại thành PNG.</p></div></details>
       <details><summary>Không thấy “Import Content” trong Item Bank</summary><div class="faq-a">
@@ -415,7 +469,7 @@
         <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></span><div><b>Ô chọn thả xuống, vế phải ghép nối, đáp án trả lời ngắn chỉ là chữ thuần</b> — không có ảnh, công thức đổi thành chữ (x², √…).</div></li>
         <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></span><div><b>Câu điền số dùng dấu chấm thập phân</b> khi học sinh làm bài (12.5).</div></li>
         <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></span><div><b>Không đọc được</b>: nội dung trong Text Box / Shape / SmartArt / Chart, ảnh EMF/WMF/BMP/TIFF/WebP, công thức trường EQ cũ, chữ font VNI/TCVN3 cũ, đề đặt cả trong một bảng.</div></li>
-        <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></span><div><b>New Quizzes</b>: việc giữ công thức MathML và ảnh khi nhập gói QTI chưa được Instructure công bố đầy đủ; câu “Chọn từ danh sách” có thể hiển thị khác Classic. Hãy nhập thử một gói nhỏ trước.</div></li>
+        <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></span><div><b>New Quizzes</b>: việc giữ công thức MathML và ảnh khi nhập gói QTI chưa được Instructure công bố đầy đủ; câu “Chọn từ danh sách”, Đúng/Sai nhiều ý và “Điền khuyết” nhiều ô có thể hiển thị khác Classic. Hãy nhập thử một gói nhỏ trước. Gửi thẳng không tạo được Item Bank chắc chắn (Canvas không có API cho Item Bank).</div></li>
         <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></span><div><b>SCORM</b>: câu sắp xếp (kéo thẻ) thành trả lời ngắn; hình vẽ SVG cần thay bằng ảnh PNG.</div></li>
       </ul>
       <p style="margin-top:18px"><a class="btn btn-primary" href="index.html"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>Bắt đầu nạp đề</a></p>
