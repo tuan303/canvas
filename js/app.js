@@ -1685,6 +1685,12 @@
     $('cv-tu-khoa').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); timKhoaHoc(); } });
     $('cv-dung-link').addEventListener('click', dungLinkKhoaHoc);
     $('cv-link-khoa').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); dungLinkKhoaHoc(); } });
+    // dán link hợp lệ là dùng luôn, không bắt bấm thêm nút
+    $('cv-link-khoa').addEventListener('paste', function () {
+      setTimeout(function () {
+        if (cvApi().parseCourseRef($('cv-link-khoa').value, S.cv.cfg && S.cv.cfg.base)) dungLinkKhoaHoc();
+      }, 0);
+    });
     $('cv-chon-ngan-hang').addEventListener('change', function () {
       var e = mucTheoKey($('cv-chon-ngan-hang').value);
       $('cv-ten-ngan-hang').value = e ? e.bank.title : '';
@@ -1860,17 +1866,20 @@
     var id = $('cv-khoa-hoc').value, cv = cvApi();
     var quyen = rong($('cv-quyen')), nh = rong($('cv-ngan-hang-cu'));
     S.cv.quyenOk = false;
+    S.cv.dangKiemQuyen = !!id;
     kiemNutGui();
     if (!id) return;
     quyen.appendChild(h('p', { class: 'muted nho' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), ' Đang kiểm tra quyền…'));
     try {
       var p = await cv.checkPermissions(id);
+      S.cv.dangKiemQuyen = false;
       rong(quyen);
       S.cv.quyenOk = !!p.ok;
       if (!p.ok) quyen.appendChild(h('div', { class: 'notice n-loi' }, icon('loi'), h('div', null, h('b', { text: 'Không nhập được vào khoá học này.' }),
         h('ul', null, (p.missing || []).map(function (m) { return h('li', { text: m }); })))));
       else quyen.appendChild(h('div', { class: 'notice n-ok' }, icon('okTron'), h('div', { text: 'Có quyền nhập nội dung vào khoá học.' })));
     } catch (e) {
+      S.cv.dangKiemQuyen = false;
       rong(quyen).appendChild(h('div', { class: 'notice n-loi' }, icon('loi'), h('div', { text: e && e.message || 'Không kiểm tra được quyền.' })));
     }
     kiemNutGui();
@@ -1916,6 +1925,16 @@
     var e = mucTheoKey($('cv-chon-ngan-hang').value);
     var ok = !!(e && tomTatMuc(e).chon > 0 && $('cv-khoa-hoc').value && S.cv.quyenOk !== false && !S.cv.dangGui);
     $('cv-gui').disabled = !ok;
+    // nút mờ thì nói rõ vì sao (trước đây thầy cô không biết phải chọn khoá học)
+    var lyDo = '';
+    if (!ok && !S.cv.dangGui) {
+      if (!e) lyDo = 'Chọn ngân hàng gửi đi.';
+      else if (!(tomTatMuc(e).chon > 0)) lyDo = 'Ngân hàng này không có câu nào được chọn để xuất — xem lại bước 2.';
+      else if (!$('cv-khoa-hoc').value) lyDo = 'Chọn khoá học ở ô "Khoá học" bên trái — hoặc dán link khoá học vào mục "Không thấy khoá học?".';
+      else if (S.cv.dangKiemQuyen) lyDo = 'Đang kiểm tra quyền nhập vào khoá học…';
+      else lyDo = 'Tài khoản không nhập được vào khoá học này — xem thông báo dưới ô "Khoá học".';
+    }
+    $('cv-ly-do-gui').textContent = lyDo;
   }
 
   async function guiCanvas() {

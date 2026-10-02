@@ -322,9 +322,10 @@
               <span><b>Ghi đè nếu đã gửi trước đó</b><br><span class="hint">Câu cùng mã được cập nhật thay vì tạo ngân hàng trùng lặp.</span></span></label>
             <p class="hint" id="cv-ghi-chu-nq" hidden style="margin-top:12px">Mỗi lần gửi tạo một New Quiz <b>mới</b> (New Quizzes không ghi đè bài cũ). Khoá học phải bật New Quizzes; nếu chưa bật, Canvas giữ bài kiểm tra Classic.</p>
             <div class="xuat-actions">
-              <button type="button" class="btn btn-red" id="cv-gui" disabled>Gửi vào Question Bank</button>
+              <button type="button" class="btn btn-red" id="cv-gui" disabled aria-describedby="cv-ly-do-gui">Gửi vào Question Bank</button>
               <button type="button" class="btn btn-outline" id="cv-huy" hidden>Huỷ</button>
             </div>
+            <p class="hint" id="cv-ly-do-gui" style="margin-top:8px" aria-live="polite"></p>
           </div>
         </div>
         <div id="cv-tien-trinh" hidden style="margin-top:16px">
