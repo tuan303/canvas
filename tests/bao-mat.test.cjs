@@ -567,7 +567,18 @@ test('OAuth với Canvas giả lập đúng hành vi 4015.instructure.com: scope
   const soTokenReq = M.tokenReqs.length;
   // error từ Canvas → không đổi mã
   let r = await raw(base, 'GET', '/api/canvas?op=callback&error=invalid_scope&state=' + s2, { cookie: I.COOKIE_STATE + '=' + s2 });
-  assert.strictEqual(r.headers.location, '/?canvas=loi&ma=canvas');
+  assert.strictEqual(r.headers.location, '/?canvas=loi&ma=thieu_scope');
+  // câu báo thật của 4015.instructure.com (2026-10-02): chỉ chuyển tiếp scope có trong danh sách của mình
+  const moTa = 'A requested scope is invalid, unknown, malformed, or exceeds the scope granted by the resource owner. The following scopes were requested, but not granted: url:GET|/api/v1/courses, url:GET|/api/v1/courses/:course_id/content_migrations, url:GET|/api/v1/courses/:course_id/content_migrations/:id, and url:GET|/api/v1/courses/:course_id/content_migrations/:content_migration_id/migration_issues';
+  r = await raw(base, 'GET', '/api/canvas?op=callback&error=invalid_scope&error_description=' + encodeURIComponent(moTa + ', <script>x</script>') + '&state=' + s2, { cookie: I.COOKIE_STATE + '=' + s2 });
+  const loc = new URL(r.headers.location, 'http://x');
+  assert.strictEqual(loc.searchParams.get('ma'), 'thieu_scope');
+  assert.deepStrictEqual(loc.searchParams.get('thieu').split(' '), ['url:GET|/api/v1/courses', 'url:GET|/api/v1/courses/:course_id/content_migrations',
+    'url:GET|/api/v1/courses/:course_id/content_migrations/:id', 'url:GET|/api/v1/courses/:course_id/content_migrations/:content_migration_id/migration_issues']);
+  assert.deepStrictEqual(I.scopeThieu('… not granted: url:GET|/api/v1/progress/:id.', I.SCOPES), ['url:GET|/api/v1/progress/:id']);
+  assert.deepStrictEqual(I.scopeThieu('không có danh sách', I.SCOPES), []);
+  r = await raw(base, 'GET', '/api/canvas?op=callback&error=invalid_client&state=' + s2, { cookie: I.COOKIE_STATE + '=' + s2 });
+  assert.strictEqual(r.headers.location, '/?canvas=loi&ma=key');
   r = await raw(base, 'GET', '/api/canvas?op=callback&error=access_denied&state=' + s2, { cookie: I.COOKIE_STATE + '=' + s2 });
   assert.strictEqual(r.headers.location, '/?canvas=loi&ma=tu_choi');
   // mã có ký tự lạ → không gửi tới Canvas
@@ -597,7 +608,9 @@ test('OAuth: chống tiêm mã (code injection) nhờ PKCE; Canvas đời cũ kh
   M.keyScopes.delete('url:GET|/api/v1/progress/:id');
   const dn2 = await dangNhap(M, base);
   assert.strictEqual(dn2.cb.searchParams.get('error'), 'invalid_scope');
-  assert.strictEqual(dn2.r3.headers.location, '/?canvas=loi&ma=canvas');
+  const loc2 = new URL(dn2.r3.headers.location, 'http://x');
+  assert.strictEqual(loc2.searchParams.get('ma'), 'thieu_scope');
+  assert.ok(!loc2.searchParams.get('thieu') || loc2.searchParams.get('thieu') === 'url:GET|/api/v1/progress/:id', loc2.search);
   M.keyScopes.add('url:GET|/api/v1/progress/:id');
   // CANVAS_SCOPES=none khi khoá không bật Enforce Scopes
   M.requireScopes = false; process.env.CANVAS_SCOPES = 'none';

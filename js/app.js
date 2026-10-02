@@ -365,11 +365,22 @@
     tu_choi: 'Thầy cô đã từ chối cấp quyền cho ứng dụng trên Canvas.',
     thieu_ma: 'Canvas không trả về mã đăng nhập — hãy thử lại.',
     doi_ma: 'Không đổi được mã đăng nhập lấy quyền truy cập — báo quản trị kiểm tra Developer Key.',
+    key: 'Canvas không nhận Developer Key (sai Client ID hoặc key đang tắt) — báo quản trị kiểm tra.',
+    thieu_scope: 'Developer Key trên Canvas chưa bật đủ quyền (scope) — báo quản trị Canvas tích thêm trong Developer Keys.',
     canvas: 'Canvas báo lỗi khi đăng nhập — hãy thử lại sau.'
   };
 
+  // Thông báo lỗi đăng nhập; thiếu scope thì nêu đúng scope (dạng "GET /api/v1/…") để quản trị tích thêm
+  function loiDangNhap(ma, thieu) {
+    var msg = LOI_DANG_NHAP[ma] || 'Đăng nhập Canvas không thành công.';
+    if (ma !== 'thieu_scope' || !thieu) return msg;
+    var ds = String(thieu).split(/\s+/).filter(function (s) { return /^url:(GET|POST|PUT|DELETE)\|\/api\/v1\/[A-Za-z0-9_:\/]+$/.test(s); })
+      .map(function (s) { return s.slice(4).replace('|', ' '); });
+    return ds.length ? 'Developer Key trên Canvas chưa bật ' + ds.length + ' scope — báo quản trị Canvas tích thêm: ' + ds.join(' · ') : msg;
+  }
+
   var thuan = {
-    LOAI_TEN: LOAI_TEN, LOAI_CANVAS: LOAI_CANVAS, MUC_TEN: MUC_TEN, NGUON_TEN: NGUON_TEN, LOI_DANG_NHAP: LOI_DANG_NHAP,
+    LOAI_TEN: LOAI_TEN, LOAI_CANVAS: LOAI_CANVAS, MUC_TEN: MUC_TEN, NGUON_TEN: NGUON_TEN, LOI_DANG_NHAP: LOI_DANG_NHAP, loiDangNhap: loiDangNhap,
     fmtSo: fmtSo, docDiem: docDiem, kieuAnh: kieuAnh, laZip: laZip, phanLoaiFile: phanLoaiFile, phanLoaiZip: phanLoaiZip,
     tachGoi: tachGoi, duoiMsg: duoiMsg, anhTrongHtml: anhTrongHtml, vanDeAnh: vanDeAnh, vanDeCau: vanDeCau, demMuc: demMuc,
     taoMuc: taoMuc, vdCua: vdCua, coLoi: coLoi, duocXuat: duocXuat, tomTatMuc: tomTatMuc,
@@ -490,7 +501,7 @@
     var el = h('div', { class: 'toast' + (kieu === 'loi' ? ' t-loi' : kieu === 'ok' ? ' t-ok' : ''), 'data-msg': msg },
       icon(kieu === 'loi' ? 'loi' : kieu === 'ok' ? 'okTron' : 'info'), h('span', { text: msg }));
     vung.appendChild(el);
-    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, kieu === 'loi' ? 9000 : 5000);
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, kieu === 'loi' ? (msg.length > 140 ? 30000 : 9000) : 5000);
   }
 
   /* ---------- làm sạch HTML trước khi hiện (nội dung đã qua bộ đọc; đây là lớp bảo vệ thứ hai) ---------- */
@@ -1657,7 +1668,7 @@
     root.addEventListener('message', function (ev) {
       if (ev.origin !== root.location.origin || !ev.data || ev.data.nh !== 'canvas-dang-nhap') return;
       if (ev.data.ok) thongBao('Đã đăng nhập Canvas.', 'ok');
-      else thongBao(LOI_DANG_NHAP[ev.data.ma] || 'Đăng nhập Canvas không thành công.', 'loi');
+      else thongBao(loiDangNhap(ev.data.ma, ev.data.thieu), 'loi');
       capNhatCanvas();
     });
     $('cv-dang-nhap').addEventListener('click', dangNhap);
@@ -1942,7 +1953,7 @@
     var ma = p.get('ma') || '';
     try {
       if (root.opener && root.opener !== root && root.opener.location.origin === root.location.origin) {
-        root.opener.postMessage({ nh: 'canvas-dang-nhap', ok: c === 'ok', ma: ma }, root.location.origin);
+        root.opener.postMessage({ nh: 'canvas-dang-nhap', ok: c === 'ok', ma: ma, thieu: p.get('thieu') || '' }, root.location.origin);
         root.close();
         return true;
       }
@@ -1950,7 +1961,7 @@
     try { root.history.replaceState(null, '', root.location.pathname + root.location.hash); } catch (e) { /* bỏ qua */ }
     setTimeout(function () {
       if (c === 'ok') thongBao('Đã đăng nhập Canvas.', 'ok');
-      else thongBao(LOI_DANG_NHAP[ma] || 'Đăng nhập Canvas không thành công.', 'loi');
+      else thongBao(loiDangNhap(ma, p.get('thieu')), 'loi');
       var s = $('buoc-canvas');
       if (s && !s.hidden) s.scrollIntoView({ block: 'start' });
     }, 400);

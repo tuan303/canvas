@@ -479,6 +479,14 @@ function opLogin(ctx) {
   return chuyenHuong(ctx, ch.base + '/login/oauth2/auth?' + q);
 }
 
+// "…were requested, but not granted: url:GET|/a, url:GET|/b, and url:GET|/c" → các scope (khớp nguyên văn)
+function scopeThieu(moTa, ds) {
+  const m = /not granted:\s*([\s\S]*)$/i.exec(String(moTa || '').slice(0, 4000));
+  if (!m) return [];
+  const co = new Set(m[1].replace(/\.\s*$/, '').split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map(s => s.trim()));
+  return ds.filter(s => co.has(s));
+}
+
 async function opCallback(ctx, u) {
   const ch = ctx.ch;
   if (!ch.base) throw loiHttp(400, ch.loi, 'chua_cau_hinh');
@@ -488,7 +496,17 @@ async function opCallback(ctx, u) {
   // state chỉ dùng MỘT lần: xoá ngay cả khi lỗi
   ctx.cookies.push(chuoiCookie(ctx, COOKIE_STATE, '', 0));
   const err = u.searchParams.get('error');
-  if (err) return chuyenHuong(ctx, ve + '?canvas=loi&ma=' + (err === 'access_denied' ? 'tu_choi' : 'canvas'));
+  if (err) {
+    if (err === 'access_denied') return chuyenHuong(ctx, ve + '?canvas=loi&ma=tu_choi');
+    if (err === 'invalid_client' || err === 'unauthorized_client') return chuyenHuong(ctx, ve + '?canvas=loi&ma=key');
+    if (err === 'invalid_scope') {
+      // Canvas liệt kê scope chưa cấp trong error_description; chỉ chuyển tiếp scope có trong danh sách
+      // của chính mình (không phản chiếu chữ tuỳ ý từ URL ra giao diện)
+      const thieu = scopeThieu(u.searchParams.get('error_description'), ch.scopes);
+      return chuyenHuong(ctx, ve + '?canvas=loi&ma=thieu_scope' + (thieu.length ? '&thieu=' + encodeURIComponent(thieu.join(' ')) : ''));
+    }
+    return chuyenHuong(ctx, ve + '?canvas=loi&ma=canvas');
+  }
   const state = u.searchParams.get('state') || '';
   if (!RE_STATE.test(state) || !RE_STATE.test(stateCookie || '') || !soSanhAnToan(state, stateCookie)) return chuyenHuong(ctx, ve + '?canvas=loi&ma=state');
   const code = u.searchParams.get('code');
@@ -689,6 +707,6 @@ module.exports._internal = {
   encryptSession: encryptSession, decryptSession: decryptSession, checkProxyPath: checkProxyPath,
   isAllowedUploadUrl: isAllowedUploadUrl, readConfig: docCauHinh, parseCookies: docCookie,
   pkceVerifier: pkceVerifier, pkceChallenge: pkceChallenge, isForbiddenParam: laKhoaCam,
-  SCOPES: SCOPES, COOKIE_SESSION: COOKIE_PHIEN, COOKIE_STATE: COOKIE_STATE, COOKIE_HOST_PREFIX: TIEN_TO_HOST,
+  SCOPES: SCOPES, scopeThieu: scopeThieu, COOKIE_SESSION: COOKIE_PHIEN, COOKIE_STATE: COOKIE_STATE, COOKIE_HOST_PREFIX: TIEN_TO_HOST,
   UPLOAD_MAX: GIOI_HAN_TAI
 };

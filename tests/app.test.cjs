@@ -361,6 +361,10 @@ test('cacBuocNhap: Item Bank (ngân hàng trống, Import Content) và Classic (
     assert.strictEqual(mo, dong, s);
   }));
   assert.ok(app.LOI_DANG_NHAP.state && app.LOI_DANG_NHAP.tu_choi && app.LOI_DANG_NHAP.doi_ma);
+  const m = app.loiDangNhap('thieu_scope', 'url:GET|/api/v1/courses url:GET|/api/v1/courses/:course_id/content_migrations/:id <b>x</b>');
+  assert.ok(/chưa bật 2 scope/.test(m) && m.includes('GET /api/v1/courses · GET /api/v1/courses/:course_id/content_migrations/:id') && !m.includes('<b>'), m);
+  assert.strictEqual(app.loiDangNhap('thieu_scope', ''), app.LOI_DANG_NHAP.thieu_scope);
+  assert.strictEqual(app.loiDangNhap('key'), app.LOI_DANG_NHAP.key);
 });
 
 /* ---------- index.html / huong-dan.html / launch.json ---------- */
