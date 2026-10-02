@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "canvas-nganhang",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "cwd": "C:/Users/Administrator/Downloads/canvas-nganhang",
+      "port": 8787
+    }
+  ]
+}

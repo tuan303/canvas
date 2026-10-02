@@ -1,0 +1,8 @@
+# Không đưa lên Vercel: kiểm thử, nghiên cứu, công cụ sinh mẫu, máy chủ chạy thử cục bộ, bí mật
+/tests/
+/docs/
+/tools/
+/server.js
+.env*
+/.claude/
+node_modules/

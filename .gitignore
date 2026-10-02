@@ -1,0 +1,5 @@
+# Bí mật (cấu hình kết nối Canvas) — chỉ giữ file mẫu
+.env
+.env.*
+!.env.example
+node_modules/
